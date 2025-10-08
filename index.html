@@ -19,6 +19,8 @@
             align-items: center;
             gap: 10px;
             flex-wrap: wrap;
+            position: relative;
+            z-index: 200;
         }
         #toolbar button, #toolbar input, #toolbar select {
             padding: 8px 12px;
@@ -45,22 +47,28 @@
             width: 800px;
             height: 600px;
             border: 2px solid #333;
-            background-color: white;
+            background-color: transparent;
             overflow: hidden;
+            transform-origin: center center;
         }
-        #zoom-wrapper {
+        #canvas-stack {
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) scale(1);
-            transform-origin: center;
-            width: 800px;
-            height: 600px;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
         }
         canvas {
             position: absolute;
             top: 0;
             left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        #checkerboard-canvas {
+            pointer-events: none;
+            z-index: 0;
+            background-color: transparent;
         }
         #input-canvas {
             pointer-events: all;
@@ -82,9 +90,9 @@
             cursor: pointer;
         }
         #layers-panel {
-            position: absolute;
-            top: 50px;
-            right: 10px;
+            position: fixed;
+            top: 70px;
+            right: 20px;
             background: rgba(0,0,0,0.9);
             color: white;
             padding: 10px;
@@ -93,38 +101,40 @@
             max-height: 500px;
             overflow-y: auto;
             display: none;
-            z-index: 100;
+            z-index: 200;
             pointer-events: auto;
         }
         #layers-table {
             width: 100%;
             border-collapse: collapse;
-            table-layout: fixed;
         }
         #layers-table th, #layers-table td {
             border: 1px solid #555;
             padding: 5px;
             text-align: left;
-            vertical-align: top;
         }
-        #layers-table th:first-child, #layers-table td:first-child {
-            width: 120px;
-        }
-        #layers-table th:last-child, #layers-table td:last-child {
-            width: 280px;
-        }
-        #layers-table canvas {
+        #layers-table td:first-child {
             width: 100px;
             height: 75px;
+            overflow: hidden;
+            position: relative;
+            background-color: #fff; /* Fondo blanco para previews transparentes */
+        }
+        #layers-table canvas {
             display: block;
-            margin: 0 auto;
+            width: 100px;
+            height: 75px;
         }
         #layers-table input[type="text"] {
             background: #333;
             color: white;
             border: 1px solid #555;
             padding: 2px;
-            width: 100px;
+        }
+        #layers-table input[type="range"] {
+            background: #333;
+            color: white;
+            width: 60px;
         }
         #layers-table button {
             padding: 2px 4px;
@@ -143,71 +153,88 @@
             background-color: gold;
             color: black;
         }
-        #layers-table tr.active input, #layers-table tr.active button {
-            color: black;
-        }
         #brush-preview {
             pointer-events: none;
             opacity: 0.5;
-            z-index: 5;
+            z-index: 9;
         }
     </style>
 </head>
 <body>
     <div id="toolbar">
-        <button id="pencil-tool" class="active">Lápiz</button>
         <button id="brush-tool">Pincel</button>
         <button id="eraser-tool">Borrador</button>
+        <button id="lasso-tool">Relleno Lazo</button>
+        <button id="lasso-eraser-tool">Borrador Lazo</button>
         <input type="color" id="color-picker" value="#000000">
         <input type="range" id="brush-size" min="1" max="50" value="5" style="width: 100px;">
         <label>Tamaño: <span id="size-display">5</span></label>
         <input type="range" id="stabilizer" min="0" max="10" value="0" style="width: 100px;">
         <label>Estabilizador: <span id="stab-display">0</span></label>
-        <label>Zoom: <span id="zoom-display">100%</span></label>
-        <button id="add-layer">+ Capa</button>
-        <button id="delete-layer">− Capa</button>
         <button id="clear-layer">Limpiar Capa</button>
+        <button id="download-btn">Descargar Imagen</button>
         <button id="layers-button">Capas</button>
     </div>
     <div id="canvas-container">
-        <div id="zoom-wrapper"></div>
-        <div id="layers-panel">
-            <table id="layers-table">
-                <thead>
-                    <tr>
-                        <th>Preview</th>
-                        <th>Controles</th>
-                    </tr>
-                </thead>
-                <tbody id="layers-tbody"></tbody>
-            </table>
-        </div>
+        <div id="canvas-stack"></div>
+    </div>
+    <div id="layers-panel">
+        <table id="layers-table">
+            <thead>
+                <tr>
+                    <th>Preview</th>
+                    <th>Controles</th>
+                </tr>
+            </thead>
+            <tbody id="layers-tbody"></tbody>
+        </table>
+        <button onclick="illustrator.addLayer()">+ Capa</button>
     </div>
 
     <script>
         class DigitalIllustrator {
             constructor() {
                 this.canvasContainer = document.getElementById('canvas-container');
-                this.zoomWrapper = document.getElementById('zoom-wrapper');
+                this.canvasStack = document.getElementById('canvas-stack');
                 this.containerWidth = 800;
                 this.containerHeight = 600;
                 this.layers = [];
                 this.activeLayerIndex = 0;
-                this.currentTool = 'pencil';
+                this.currentTool = 'brush';
                 this.brushSize = 5;
                 this.stabilizer = 0;
-                this.zoom = 1;
                 this.color = '#000000';
                 this.isDrawing = false;
+                this.isLassoDrawing = false;
                 this.points = [];
+                this.lassoPoints = [];
                 this.isLayersPanelOpen = false;
+                this.zoom = 1;
+                this.panX = 0;
+                this.panY = 0;
+                this.isPanning = false;
+                this.startPanX = 0;
+                this.startPanY = 0;
+
+                // Canvas de cuadricula de ajedrez para transparencia
+                this.checkerboardCanvas = document.createElement('canvas');
+                this.checkerboardCanvas.id = 'checkerboard-canvas';
+                this.checkerboardCanvas.width = this.containerWidth;
+                this.checkerboardCanvas.height = this.containerHeight;
+                this.checkerboardCanvas.style.width = '100%';
+                this.checkerboardCanvas.style.height = '100%';
+                this.checkerboardCanvas.style.zIndex = '0';
+                this.canvasStack.appendChild(this.checkerboardCanvas);
+                this.drawCheckerboard();
 
                 this.inputCanvas = document.createElement('canvas');
                 this.inputCanvas.id = 'input-canvas';
                 this.inputCanvas.width = this.containerWidth;
                 this.inputCanvas.height = this.containerHeight;
+                this.inputCanvas.style.width = '100%';
+                this.inputCanvas.style.height = '100%';
                 this.inputCanvas.style.zIndex = '10';
-                this.zoomWrapper.appendChild(this.inputCanvas);
+                this.canvasStack.appendChild(this.inputCanvas);
 
                 this.inputCtx = this.inputCanvas.getContext('2d');
                 this.inputCtx.lineCap = 'round';
@@ -217,14 +244,32 @@
                 this.brushPreviewCanvas.id = 'brush-preview';
                 this.brushPreviewCanvas.width = this.containerWidth;
                 this.brushPreviewCanvas.height = this.containerHeight;
-                this.zoomWrapper.appendChild(this.brushPreviewCanvas);
+                this.brushPreviewCanvas.style.width = '100%';
+                this.brushPreviewCanvas.style.height = '100%';
+                this.canvasStack.appendChild(this.brushPreviewCanvas);
                 this.brushPreviewCtx = this.brushPreviewCanvas.getContext('2d');
 
                 this.initLayers();
                 this.bindEvents();
                 this.updateLayerUI();
                 this.updateDisplays();
-                this.updateBrushPreview();
+                this.updateCanvasTransform();
+            }
+
+            drawCheckerboard() {
+                const ctx = this.checkerboardCanvas.getContext('2d');
+                const size = 20;
+                ctx.fillStyle = '#f0f0f0';
+                ctx.fillRect(0, 0, this.containerWidth, this.containerHeight);
+                for (let x = 0; x < this.containerWidth; x += size * 2) {
+                    for (let y = 0; y < this.containerHeight; y += size * 2) {
+                        ctx.fillStyle = (x / (size * 2) + y / (size * 2)) % 2 ? '#ccc' : '#f0f0f0';
+                        ctx.fillRect(x, y, size, size);
+                        ctx.fillStyle = '#f0f0f0';
+                        ctx.fillRect(x + size, y, size, size);
+                        ctx.fillRect(x, y + size, size * 2, size);
+                    }
+                }
             }
 
             initLayers() {
@@ -239,18 +284,25 @@
                 canvas.className = 'layer-canvas';
                 canvas.width = this.containerWidth;
                 canvas.height = this.containerHeight;
+                canvas.style.width = '100%';
+                canvas.style.height = '100%';
+                canvas.style.opacity = '1';
+                canvas.style.backgroundColor = 'transparent';
                 canvas.style.zIndex = isBackground ? '1' : `${this.layers.length + 1}`;
-                this.zoomWrapper.appendChild(canvas);
+                this.canvasStack.appendChild(canvas);
                 const ctx = canvas.getContext('2d');
                 if (isBackground) {
                     ctx.fillStyle = 'white';
                     ctx.fillRect(0, 0, this.containerWidth, this.containerHeight);
+                } else {
+                    ctx.clearRect(0, 0, this.containerWidth, this.containerHeight);
                 }
                 return {
                     canvas,
                     ctx,
                     name,
                     visible: true,
+                    opacity: 1.0,
                     history: [],
                     redoStack: []
                 };
@@ -259,7 +311,7 @@
             addLayer() {
                 const newLayer = this.createLayer(`Capa ${this.layers.length + 1}`);
                 this.layers.push(newLayer);
-                this.saveState(newLayer); // Guardar estado inicial vacío
+                this.saveState(newLayer);
                 this.activeLayerIndex = this.layers.length - 1;
                 this.updateZIndices();
                 this.updateLayerUI();
@@ -276,7 +328,7 @@
                 const layer = this.layers[this.activeLayerIndex];
                 layer.history = [];
                 layer.redoStack = [];
-                this.zoomWrapper.removeChild(layer.canvas);
+                this.canvasStack.removeChild(layer.canvas);
                 this.layers.splice(this.activeLayerIndex, 1);
                 this.activeLayerIndex = Math.min(this.activeLayerIndex, this.layers.length - 1);
                 this.updateZIndices();
@@ -286,16 +338,62 @@
 
             clearActiveLayer() {
                 const layer = this.layers[this.activeLayerIndex];
-                this.saveState(layer); // Guardar antes de limpiar
+                this.saveState(layer);
                 layer.ctx.clearRect(0, 0, this.containerWidth, this.containerHeight);
                 if (this.isLayersPanelOpen) this.updateLayerUI();
+            }
+
+            setOpacity(index, value) {
+                const opacity = value / 100;
+                this.layers[index].opacity = opacity;
+                this.layers[index].canvas.style.opacity = opacity;
+            }
+
+            downloadImage() {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = this.containerWidth;
+                tempCanvas.height = this.containerHeight;
+                const tempCtx = tempCanvas.getContext('2d');
+
+                // Dibuja cuadricula de ajedrez como fondo
+                this.drawCheckerboardOnCtx(tempCtx);
+
+                // Dibuja capas visibles en orden
+                this.layers.forEach(layer => {
+                    if (layer.visible) {
+                        tempCtx.save();
+                        tempCtx.globalAlpha = layer.opacity;
+                        tempCtx.drawImage(layer.canvas, 0, 0);
+                        tempCtx.restore();
+                    }
+                });
+
+                const link = document.createElement('a');
+                link.download = 'mi-ilustracion.png';
+                link.href = tempCanvas.toDataURL('image/png');
+                link.click();
+            }
+
+            drawCheckerboardOnCtx(ctx) {
+                const size = 20;
+                ctx.fillStyle = '#f0f0f0';
+                ctx.fillRect(0, 0, this.containerWidth, this.containerHeight);
+                for (let x = 0; x < this.containerWidth; x += size * 2) {
+                    for (let y = 0; y < this.containerHeight; y += size * 2) {
+                        ctx.fillStyle = (Math.floor(x / (size * 2)) + Math.floor(y / (size * 2))) % 2 ? '#ccc' : '#f0f0f0';
+                        ctx.fillRect(x, y, size, size);
+                        ctx.fillStyle = '#f0f0f0';
+                        ctx.fillRect(x + size, y, size, size);
+                        ctx.fillRect(x, y + size, size * 2, size);
+                    }
+                }
             }
 
             saveState(layer) {
                 const data = layer.ctx.getImageData(0, 0, this.containerWidth, this.containerHeight);
                 layer.history.push(data);
-                layer.redoStack = []; // Limpiar redo al nueva acción
-                if (layer.history.length > 50) layer.history.shift(); // Límite 50
+                layer.redoStack = [];
+                if (layer.history.length > 50) layer.history.shift();
             }
 
             undo() {
@@ -361,15 +459,16 @@
                     if (index === this.activeLayerIndex) {
                         tr.classList.add('active');
                     }
-
                     const previewTd = document.createElement('td');
-                    previewTd.style.cursor = 'pointer';
                     const previewCanvas = document.createElement('canvas');
                     previewCanvas.width = 100;
                     previewCanvas.height = 75;
                     const previewCtx = previewCanvas.getContext('2d');
+                    // Para preview: dibuja ajedrez + capa
+                    this.drawCheckerboardOnCtx(previewCtx);
                     previewCtx.drawImage(layer.canvas, 0, 0, 100, 75);
                     previewTd.appendChild(previewCanvas);
+                    previewTd.style.cursor = 'pointer';
                     previewTd.addEventListener('click', () => {
                         this.activeLayerIndex = index;
                         this.updateLayerUI();
@@ -377,12 +476,14 @@
 
                     const controlsTd = document.createElement('td');
                     const visIcon = layer.visible ? '👁' : '🙈';
+                    const opacityValue = Math.round(layer.opacity * 100);
                     controlsTd.innerHTML = `
                         <input type="text" value="${layer.name}" onchange="illustrator.renameLayer(${index}, this.value)">
-                        <button onclick="event.stopPropagation(); illustrator.moveLayer(${index}, 'up')">↑</button>
-                        <button onclick="event.stopPropagation(); illustrator.moveLayer(${index}, 'down')">↓</button>
-                        <button onclick="event.stopPropagation(); illustrator.toggleVisibility(${index})">${visIcon}</button>
-                        <button onclick="event.stopPropagation(); illustrator.deleteSpecificLayer(${index})">Borrar</button>
+                        <button onclick="illustrator.moveLayer(${index}, 'up')">↑</button>
+                        <button onclick="illustrator.moveLayer(${index}, 'down')">↓</button>
+                        <button onclick="illustrator.toggleVisibility(${index})">${visIcon}</button>
+                        <input type="range" min="0" max="100" value="${opacityValue}" onchange="illustrator.setOpacity(${index}, this.value)">
+                        <button onclick="illustrator.deleteSpecificLayer(${index})">Borrar</button>
                     `;
                     tr.appendChild(previewTd);
                     tr.appendChild(controlsTd);
@@ -418,19 +519,19 @@
             }
 
             bindEvents() {
-                document.getElementById('pencil-tool').addEventListener('click', () => this.setTool('pencil'));
                 document.getElementById('brush-tool').addEventListener('click', () => this.setTool('brush'));
                 document.getElementById('eraser-tool').addEventListener('click', () => this.setTool('eraser'));
+                document.getElementById('lasso-tool').addEventListener('click', () => this.setTool('lasso'));
+                document.getElementById('lasso-eraser-tool').addEventListener('click', () => this.setTool('lasso-eraser'));
+                document.getElementById('download-btn').addEventListener('click', () => this.downloadImage());
 
                 document.getElementById('color-picker').addEventListener('change', (e) => {
                     this.color = e.target.value;
-                    this.updateBrushPreview();
                 });
 
                 document.getElementById('brush-size').addEventListener('input', (e) => {
                     this.brushSize = parseInt(e.target.value);
                     document.getElementById('size-display').textContent = this.brushSize;
-                    this.updateBrushPreview();
                 });
 
                 document.getElementById('stabilizer').addEventListener('input', (e) => {
@@ -438,11 +539,10 @@
                     document.getElementById('stab-display').textContent = this.stabilizer;
                 });
 
-                document.getElementById('add-layer').addEventListener('click', () => this.addLayer());
-                document.getElementById('delete-layer').addEventListener('click', () => this.deleteLayer());
                 document.getElementById('clear-layer').addEventListener('click', () => this.clearActiveLayer());
                 document.getElementById('layers-button').addEventListener('click', () => this.toggleLayersPanel());
 
+                // Atajos de teclado
                 document.addEventListener('keydown', (e) => {
                     if (e.ctrlKey && e.key === 'z') {
                         e.preventDefault();
@@ -450,33 +550,105 @@
                     } else if (e.ctrlKey && e.key === 'y') {
                         e.preventDefault();
                         this.redo();
+                    } else if (e.key === '1') {
+                        e.preventDefault();
+                        this.setTool('brush');
+                    } else if (e.key === '2') {
+                        e.preventDefault();
+                        this.setTool('eraser');
+                    } else if (e.key === '3') {
+                        e.preventDefault();
+                        this.setTool('lasso');
+                    } else if (e.key === '4') {
+                        e.preventDefault();
+                        this.setTool('lasso-eraser');
+                    } else if (e.key === 'q' || e.key === 'Q') {
+                        e.preventDefault();
+                        this.brushSize = Math.max(1, this.brushSize - 1);
+                        document.getElementById('brush-size').value = this.brushSize;
+                        document.getElementById('size-display').textContent = this.brushSize;
+                    } else if (e.key === 'w' || e.key === 'W') {
+                        e.preventDefault();
+                        this.brushSize = Math.min(50, this.brushSize + 1);
+                        document.getElementById('brush-size').value = this.brushSize;
+                        document.getElementById('size-display').textContent = this.brushSize;
+                    } else if (e.key === 'a' || e.key === 'A') {
+                        e.preventDefault();
+                        this.stabilizer = Math.max(0, this.stabilizer - 1);
+                        document.getElementById('stabilizer').value = this.stabilizer;
+                        document.getElementById('stab-display').textContent = this.stabilizer;
+                    } else if (e.key === 's' || e.key === 'S') {
+                        e.preventDefault();
+                        this.stabilizer = Math.min(10, this.stabilizer + 1);
+                        document.getElementById('stabilizer').value = this.stabilizer;
+                        document.getElementById('stab-display').textContent = this.stabilizer;
                     }
                 });
 
-                // Wheel zoom
-                this.inputCanvas.addEventListener('wheel', (e) => {
+                this.canvasContainer.addEventListener('wheel', (e) => {
                     e.preventDefault();
-                    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-                    this.zoom *= delta;
-                    this.zoom = Math.max(0.1, Math.min(5, this.zoom));
-                    this.zoomWrapper.style.transform = `translate(-50%, -50%) scale(${this.zoom})`;
-                    document.getElementById('zoom-display').textContent = Math.round(this.zoom * 100) + '%';
+                    const rect = this.canvasContainer.getBoundingClientRect();
+                    const mouseX = e.clientX - rect.left;
+                    const mouseY = e.clientY - rect.top;
+                    const oldZoom = this.zoom;
+                    const zoomDelta = e.deltaY < 0 ? 0.1 : -0.1;
+                    this.zoom = Math.max(0.5, Math.min(4, oldZoom + zoomDelta));
+                    const deltaZoom = this.zoom - oldZoom;
+                    this.panX -= (mouseX / oldZoom) * deltaZoom;
+                    this.panY -= (mouseY / oldZoom) * deltaZoom;
+                    this.updateCanvasTransform();
                 });
 
-                const canvasEvents = (e) => {
-                    if (this.isDrawing) {
-                        this.draw(e);
+                this.canvasContainer.addEventListener('contextmenu', (e) => e.preventDefault());
+                this.canvasContainer.addEventListener('mousedown', (e) => {
+                    if (e.button === 2) { 
+                        this.isPanning = true;
+                        this.startPanX = e.clientX;
+                        this.startPanY = e.clientY;
+                        this.canvasContainer.style.cursor = 'grabbing';
+                        e.preventDefault();
+                    } else if (e.button === 0) {
+                        if (this.currentTool === 'lasso' || this.currentTool === 'lasso-eraser') {
+                            this.startLasso(e);
+                        } else {
+                            this.startDrawing(e);
+                        }
                     }
-                };
+                });
+                this.canvasContainer.addEventListener('mousemove', (e) => {
+                    this.updateBrushPreview(e);
+                    if (this.isPanning) {
+                        const dx = e.clientX - this.startPanX;
+                        const dy = e.clientY - this.startPanY;
+                        this.panX += dx;
+                        this.panY += dy;
+                        this.startPanX = e.clientX;
+                        this.startPanY = e.clientY;
+                        this.updateCanvasTransform();
+                    } else if (this.isDrawing) {
+                        this.draw(e);
+                    } else if (this.isLassoDrawing) {
+                        this.drawLasso(e);
+                    }
+                });
+                this.canvasContainer.addEventListener('mouseup', (e) => {
+                    if (this.isPanning) {
+                        this.isPanning = false;
+                        this.canvasContainer.style.cursor = 'default';
+                    } else if (this.isLassoDrawing) {
+                        this.stopLasso(e);
+                    } else {
+                        this.stopDrawing();
+                    }
+                });
+                this.canvasContainer.addEventListener('mouseout', () => {
+                    this.stopDrawing();
+                    this.stopLasso();
+                });
 
-                this.inputCanvas.addEventListener('mousedown', (e) => this.startDrawing(e));
-                this.inputCanvas.addEventListener('mousemove', canvasEvents);
-                this.inputCanvas.addEventListener('mouseup', () => this.stopDrawing());
-                this.inputCanvas.addEventListener('mouseout', () => this.stopDrawing());
-
-                this.inputCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); this.startDrawing(e.touches[0]); });
-                this.inputCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); canvasEvents(e.touches[0]); });
-                this.inputCanvas.addEventListener('touchend', (e) => { e.preventDefault(); this.stopDrawing(); });
+                this.inputCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); if (this.currentTool === 'lasso' || this.currentTool === 'lasso-eraser') this.startLasso(e.touches[0]); else this.startDrawing(e.touches[0]); });
+                this.inputCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); if (this.isLassoDrawing) this.drawLasso(e.touches[0]); else this.draw(e.touches[0]); });
+                this.inputCanvas.addEventListener('touchend', (e) => { e.preventDefault(); if (this.isLassoDrawing) this.stopLasso(); else this.stopDrawing(); });
             }
 
             setTool(tool) {
@@ -486,7 +658,7 @@
             }
 
             getMousePos(e) {
-                const rect = this.inputCanvas.getBoundingClientRect();
+                const rect = this.canvasContainer.getBoundingClientRect();
                 return {
                     x: (e.clientX - rect.left) / this.zoom,
                     y: (e.clientY - rect.top) / this.zoom
@@ -498,39 +670,27 @@
                 this.points = [pos];
                 const layer = this.layers[this.activeLayerIndex];
                 if (!layer.visible) return;
-                this.saveState(layer); // Guardar ANTES del trazo
+                this.saveState(layer);
                 this.isDrawing = true;
-                this.brushPreviewCtx.clearRect(0, 0, this.containerWidth, this.containerHeight); // Ocultar preview durante dibujo
-                if (this.currentTool === 'eraser') {
-                    this.inputCtx.globalCompositeOperation = 'copy';
-                    this.inputCtx.drawImage(layer.canvas, 0, 0);
-                    this.inputCtx.globalCompositeOperation = 'destination-out';
-                } else {
-                    this.inputCtx.globalCompositeOperation = 'source-over';
-                    this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
-                }
-                this.inputCtx.lineWidth = this.brushSize;
-                this.inputCtx.strokeStyle = this.color;
-                this.draw(e);
+                this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
             }
 
             draw(e) {
                 if (!this.isDrawing) return;
+
                 const pos = this.getMousePos(e);
                 this.points.push(pos);
-                const layer = this.layers[this.activeLayerIndex];
-                if (!layer.visible) return;
+
                 if (this.currentTool === 'eraser') {
-                    this.inputCtx.globalCompositeOperation = 'copy';
-                    this.inputCtx.drawImage(layer.canvas, 0, 0);
-                    this.inputCtx.globalCompositeOperation = 'destination-out';
-                } else {
-                    this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
-                    this.inputCtx.globalCompositeOperation = 'source-over';
+                    this.handleEraserDraw();
+                    return;
                 }
+
+                const smoothed = this.getSmoothedPoints();
+                this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+                this.inputCtx.globalCompositeOperation = 'source-over';
                 this.inputCtx.lineWidth = this.brushSize;
                 this.inputCtx.strokeStyle = this.color;
-                const smoothed = this.getSmoothedPoints();
                 this.drawPath(this.inputCtx, smoothed);
             }
 
@@ -538,39 +698,132 @@
                 if (!this.isDrawing) return;
                 this.isDrawing = false;
                 const layer = this.layers[this.activeLayerIndex];
-                if (!layer.visible || this.points.length < 2) {
+                if (!layer.visible) {
                     this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
                     this.points = [];
-                    this.updateBrushPreview();
+                    return;
+                }
+
+                if (this.currentTool === 'eraser') {
+                    if (this.points.length === 1) {
+                        layer.ctx.globalCompositeOperation = 'destination-out';
+                        layer.ctx.beginPath();
+                        layer.ctx.arc(this.points[0].x, this.points[0].y, this.brushSize / 2, 0, 2 * Math.PI);
+                        layer.ctx.fill();
+                        layer.ctx.globalCompositeOperation = 'source-over';
+                    }
+                    this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+                    if (this.isLayersPanelOpen) {
+                        this.updateLayerUI();
+                    }
+                    this.points = [];
+                    return;
+                }
+
+                if (this.points.length < 2) {
+                    this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+                    this.points = [];
                     return;
                 }
                 const smoothed = this.getSmoothedPoints();
                 layer.ctx.globalCompositeOperation = 'source-over';
                 layer.ctx.lineCap = 'round';
                 layer.ctx.lineJoin = 'round';
-                if (this.currentTool === 'eraser') {
-                    layer.ctx.globalCompositeOperation = 'copy';
-                    layer.ctx.drawImage(this.inputCanvas, 0, 0);
-                } else {
-                    layer.ctx.lineWidth = this.brushSize;
-                    layer.ctx.strokeStyle = this.color;
-                    this.drawPath(layer.ctx, smoothed);
-                }
+                layer.ctx.lineWidth = this.brushSize;
+                layer.ctx.strokeStyle = this.color;
+                this.drawPath(layer.ctx, smoothed);
                 this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
                 if (this.isLayersPanelOpen) {
                     this.updateLayerUI();
                 }
                 this.points = [];
-                this.updateBrushPreview(); // Mostrar preview de nuevo
             }
 
-            updateBrushPreview() {
+            startLasso(e) {
+                const pos = this.getMousePos(e);
+                this.lassoPoints = [pos];
+                this.isLassoDrawing = true;
+                this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+                this.inputCtx.strokeStyle = '#000';
+                this.inputCtx.lineWidth = 1;
+                this.inputCtx.setLineDash([5, 5]);
+                this.drawLasso(e);
+            }
+
+            drawLasso(e) {
+                if (!this.isLassoDrawing) return;
+                const pos = this.getMousePos(e);
+                this.lassoPoints.push(pos);
+                this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+                this.inputCtx.beginPath();
+                this.inputCtx.moveTo(this.lassoPoints[0].x, this.lassoPoints[0].y);
+                for (let i = 1; i < this.lassoPoints.length; i++) {
+                    this.inputCtx.lineTo(this.lassoPoints[i].x, this.lassoPoints[i].y);
+                }
+                this.inputCtx.lineTo(this.lassoPoints[0].x, this.lassoPoints[0].y);
+                this.inputCtx.stroke();
+            }
+
+            stopLasso() {
+                if (!this.isLassoDrawing || this.lassoPoints.length < 3) {
+                    this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+                    this.lassoPoints = [];
+                    this.isLassoDrawing = false;
+                    return;
+                }
+                const layer = this.layers[this.activeLayerIndex];
+                if (!layer.visible) {
+                    this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+                    this.lassoPoints = [];
+                    this.isLassoDrawing = false;
+                    return;
+                }
+                this.saveState(layer);
+
+                layer.ctx.beginPath();
+                layer.ctx.moveTo(this.lassoPoints[0].x, this.lassoPoints[0].y);
+                for (let i = 1; i < this.lassoPoints.length; i++) {
+                    layer.ctx.lineTo(this.lassoPoints[i].x, this.lassoPoints[i].y);
+                }
+                layer.ctx.closePath();
+
+                if (this.currentTool === 'lasso') {
+                    layer.ctx.globalCompositeOperation = 'source-over';
+                    layer.ctx.fillStyle = this.color;
+                    layer.ctx.fill();
+                } else if (this.currentTool === 'lasso-eraser') {
+                    layer.ctx.globalCompositeOperation = 'destination-out';
+                    layer.ctx.fill();
+                    layer.ctx.globalCompositeOperation = 'source-over';
+                }
+
+                this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+                if (this.isLayersPanelOpen) {
+                    this.updateLayerUI();
+                }
+                this.lassoPoints = [];
+                this.isLassoDrawing = false;
+            }
+
+            handleEraserDraw() {
+                const layer = this.layers[this.activeLayerIndex];
+                if (!layer.visible) return;
+                const smoothed = this.getSmoothedPoints();
+                layer.ctx.globalCompositeOperation = 'destination-out';
+                layer.ctx.lineCap = 'round';
+                layer.ctx.lineJoin = 'round';
+                layer.ctx.lineWidth = this.brushSize;
+                this.drawPath(layer.ctx, smoothed);
+                layer.ctx.globalCompositeOperation = 'source-over';
+            }
+
+            updateBrushPreview(e) {
+                if (this.isDrawing || this.isLassoDrawing) return;
+                const pos = this.getMousePos(e);
                 this.brushPreviewCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
-                const previewX = 30;
-                const previewY = this.containerHeight - 50;
                 this.brushPreviewCtx.beginPath();
-                this.brushPreviewCtx.arc(previewX, previewY, this.brushSize / 2, 0, 2 * Math.PI);
-                this.brushPreviewCtx.strokeStyle = this.color;
+                this.brushPreviewCtx.arc(pos.x, pos.y, this.brushSize / 2, 0, 2 * Math.PI);
+                this.brushPreviewCtx.strokeStyle = this.currentTool === 'eraser' ? '#ffffff' : this.color;
                 this.brushPreviewCtx.lineWidth = 1;
                 this.brushPreviewCtx.stroke();
             }
@@ -587,7 +840,10 @@
             updateDisplays() {
                 document.getElementById('size-display').textContent = this.brushSize;
                 document.getElementById('stab-display').textContent = this.stabilizer;
-                document.getElementById('zoom-display').textContent = Math.round(this.zoom * 100) + '%';
+            }
+
+            updateCanvasTransform() {
+                this.canvasContainer.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoom})`;
             }
         }
 

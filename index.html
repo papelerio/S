@@ -44,8 +44,6 @@
         #canvas-container {
             position: relative;
             margin: 20px auto;
-            width: 800px;
-            height: 600px;
             border: 2px solid #333;
             background-color: transparent;
             overflow: hidden;
@@ -118,7 +116,7 @@
             height: 75px;
             overflow: hidden;
             position: relative;
-            background-color: #fff; /* Fondo blanco para previews transparentes */
+            background-color: #fff;
         }
         #layers-table canvas {
             display: block;
@@ -158,14 +156,148 @@
             opacity: 0.5;
             z-index: 9;
         }
+        /* Panel de configuración de relleno */
+        .fill-settings-panel {
+            position: absolute;
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+            z-index: 300;
+            min-width: 250px;
+        }
+        .fill-settings-panel label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+        .fill-settings-panel input[type="range"] {
+            width: 100%;
+        }
+        /* Modal de tamaño de lienzo */
+        #canvas-size-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        #canvas-size-modal .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            min-width: 400px;
+        }
+        #canvas-size-modal h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        .size-presets {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .size-preset {
+            padding: 15px;
+            background: #f0f0f0;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .size-preset:hover {
+            background: #007bff;
+            color: white;
+            border-color: #0056b3;
+        }
+        .size-preset.active {
+            background: #007bff;
+            color: white;
+            border-color: #0056b3;
+        }
+        .custom-size {
+            margin: 20px 0;
+        }
+        .custom-size input {
+            width: 80px;
+            padding: 8px;
+            margin: 0 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        #create-canvas-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        #create-canvas-btn:hover {
+            background: #218838;
+        }
     </style>
 </head>
 <body>
-    <div id="toolbar">
+    <!-- Modal de selección de tamaño -->
+    <div id="canvas-size-modal">
+        <div class="modal-content">
+            <h2>🎨 Selecciona el tamaño de tu lienzo</h2>
+            
+            <div class="size-presets">
+                <div class="size-preset active" data-width="800" data-height="600">
+                    <strong>800 × 600</strong><br>
+                    <small>Estándar</small>
+                </div>
+                <div class="size-preset" data-width="1920" data-height="1080">
+                    <strong>1920 × 1080</strong><br>
+                    <small>Full HD</small>
+                </div>
+                <div class="size-preset" data-width="1280" data-height="720">
+                    <strong>1280 × 720</strong><br>
+                    <small>HD</small>
+                </div>
+                <div class="size-preset" data-width="3840" data-height="2160">
+                    <strong>3840 × 2160</strong><br>
+                    <small>4K UHD</small>
+                </div>
+                <div class="size-preset" data-width="1200" data-height="1200">
+                    <strong>1200 × 1200</strong><br>
+                    <small>Cuadrado Grande</small>
+                </div>
+                <div class="size-preset" data-width="500" data-height="500">
+                    <strong>500 × 500</strong><br>
+                    <small>Cuadrado Pequeño</small>
+                </div>
+            </div>
+
+            <div class="custom-size">
+                <h3>Personalizado</h3>
+                <input type="number" id="custom-width" placeholder="Ancho" min="100" max="5000" value="800">
+                <span>×</span>
+                <input type="number" id="custom-height" placeholder="Alto" min="100" max="5000" value="600">
+            </div>
+
+            <button id="create-canvas-btn">Crear Lienzo</button>
+        </div>
+    </div>
+
+    <div id="toolbar" style="display: none;">
         <button id="brush-tool">Pincel</button>
         <button id="eraser-tool">Borrador</button>
         <button id="lasso-tool">Relleno Lazo</button>
         <button id="lasso-eraser-tool">Borrador Lazo</button>
+        <button id="fill-tool">Relleno</button>
         <input type="color" id="color-picker" value="#000000">
         <input type="range" id="brush-size" min="1" max="50" value="5" style="width: 100px;">
         <label>Tamaño: <span id="size-display">5</span></label>
@@ -174,10 +306,17 @@
         <button id="clear-layer">Limpiar Capa</button>
         <button id="download-btn">Descargar Imagen</button>
         <button id="layers-button">Capas</button>
+        
+        <!-- Panel de configuración de relleno -->
+        <div id="fill-settings-panel" class="fill-settings-panel">
+            <label for="fill-tolerance">Tolerancia: <span id="tolerance-display">30</span></label>
+            <input type="range" id="fill-tolerance" min="0" max="255" value="30">
+            <label for="fill-alpha-tolerance">Tolerancia Alpha: <span id="alpha-tolerance-display">50</span></label>
+            <input type="range" id="fill-alpha-tolerance" min="0" max="255" value="50">
+            <small style="color: #ccc; font-size: 10px;">¡Tolerancia máxima ahora es 255! 💪</small>
+        </div>
     </div>
-    <div id="canvas-container">
-        <div id="canvas-stack"></div>
-    </div>
+    <div id="canvas-container" style="display: none;"></div>
     <div id="layers-panel">
         <table id="layers-table">
             <thead>
@@ -215,6 +354,68 @@
                 this.isPanning = false;
                 this.startPanX = 0;
                 this.startPanY = 0;
+                this.fillTolerance = 30;
+                this.fillAlphaTolerance = 50;
+
+                this.initCanvasSizeModal();
+            }
+
+            initCanvasSizeModal() {
+                const modal = document.getElementById('canvas-size-modal');
+                const presets = document.querySelectorAll('.size-preset');
+                const createBtn = document.getElementById('create-canvas-btn');
+                const customWidth = document.getElementById('custom-width');
+                const customHeight = document.getElementById('custom-height');
+
+                presets.forEach(preset => {
+                    preset.addEventListener('click', () => {
+                        presets.forEach(p => p.classList.remove('active'));
+                        preset.classList.add('active');
+                        customWidth.value = preset.dataset.width;
+                        customHeight.value = preset.dataset.height;
+                    });
+                });
+
+                createBtn.addEventListener('click', () => {
+                    this.containerWidth = parseInt(customWidth.value) || 800;
+                    this.containerHeight = parseInt(customHeight.value) || 600;
+                    
+                    if (this.containerWidth < 100 || this.containerHeight < 100) {
+                        alert('El tamaño mínimo es 100×100 píxeles');
+                        return;
+                    }
+                    if (this.containerWidth > 5000 || this.containerHeight > 5000) {
+                        alert('El tamaño máximo es 5000×5000 píxeles');
+                        return;
+                    }
+
+                    modal.style.display = 'none';
+                    document.getElementById('toolbar').style.display = 'flex';
+                    this.canvasContainer.style.display = 'block';
+                    
+                    this.initCanvas();
+                    this.bindEvents();
+                    this.updateDisplays();
+                });
+
+                // Enter para crear lienzo
+                customWidth.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') createBtn.click();
+                });
+                customHeight.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') createBtn.click();
+                });
+            }
+
+            initCanvas() {
+                // Configurar contenedor
+                this.canvasContainer.style.width = this.containerWidth + 'px';
+                this.canvasContainer.style.height = this.containerHeight + 'px';
+                
+                this.canvasStack = document.createElement('div');
+                this.canvasStack.id = 'canvas-stack';
+                this.canvasContainer.innerHTML = '';
+                this.canvasContainer.appendChild(this.canvasStack);
 
                 // Canvas de cuadricula de ajedrez para transparencia
                 this.checkerboardCanvas = document.createElement('canvas');
@@ -250,9 +451,7 @@
                 this.brushPreviewCtx = this.brushPreviewCanvas.getContext('2d');
 
                 this.initLayers();
-                this.bindEvents();
                 this.updateLayerUI();
-                this.updateDisplays();
                 this.updateCanvasTransform();
             }
 
@@ -355,10 +554,8 @@
                 tempCanvas.height = this.containerHeight;
                 const tempCtx = tempCanvas.getContext('2d');
 
-                // Dibuja cuadricula de ajedrez como fondo
                 this.drawCheckerboardOnCtx(tempCtx);
 
-                // Dibuja capas visibles en orden
                 this.layers.forEach(layer => {
                     if (layer.visible) {
                         tempCtx.save();
@@ -369,7 +566,7 @@
                 });
 
                 const link = document.createElement('a');
-                link.download = 'mi-ilustracion.png';
+                link.download = `mi-ilustracion-${this.containerWidth}x${this.containerHeight}.png`;
                 link.href = tempCanvas.toDataURL('image/png');
                 link.click();
             }
@@ -464,7 +661,6 @@
                     previewCanvas.width = 100;
                     previewCanvas.height = 75;
                     const previewCtx = previewCanvas.getContext('2d');
-                    // Para preview: dibuja ajedrez + capa
                     this.drawCheckerboardOnCtx(previewCtx);
                     previewCtx.drawImage(layer.canvas, 0, 0, 100, 75);
                     previewTd.appendChild(previewCanvas);
@@ -523,6 +719,13 @@
                 document.getElementById('eraser-tool').addEventListener('click', () => this.setTool('eraser'));
                 document.getElementById('lasso-tool').addEventListener('click', () => this.setTool('lasso'));
                 document.getElementById('lasso-eraser-tool').addEventListener('click', () => this.setTool('lasso-eraser'));
+                document.getElementById('fill-tool').addEventListener('click', () => this.setTool('fill'));
+                
+                document.getElementById('fill-tool').addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    this.showFillSettings(e);
+                });
+
                 document.getElementById('download-btn').addEventListener('click', () => this.downloadImage());
 
                 document.getElementById('color-picker').addEventListener('change', (e) => {
@@ -539,8 +742,25 @@
                     document.getElementById('stab-display').textContent = this.stabilizer;
                 });
 
+                // Configuración de tolerancia de relleno MÁS POTENTE
+                document.getElementById('fill-tolerance').addEventListener('input', (e) => {
+                    this.fillTolerance = parseInt(e.target.value);
+                    document.getElementById('tolerance-display').textContent = this.fillTolerance;
+                });
+
+                document.getElementById('fill-alpha-tolerance').addEventListener('input', (e) => {
+                    this.fillAlphaTolerance = parseInt(e.target.value);
+                    document.getElementById('alpha-tolerance-display').textContent = this.fillAlphaTolerance;
+                });
+
                 document.getElementById('clear-layer').addEventListener('click', () => this.clearActiveLayer());
                 document.getElementById('layers-button').addEventListener('click', () => this.toggleLayersPanel());
+
+                document.addEventListener('click', (e) => {
+                    if (!e.target.closest('#fill-settings-panel') && !e.target.closest('#fill-tool')) {
+                        document.getElementById('fill-settings-panel').style.display = 'none';
+                    }
+                });
 
                 // Atajos de teclado
                 document.addEventListener('keydown', (e) => {
@@ -562,6 +782,9 @@
                     } else if (e.key === '4') {
                         e.preventDefault();
                         this.setTool('lasso-eraser');
+                    } else if (e.key === '5') {
+                        e.preventDefault();
+                        this.setTool('fill');
                     } else if (e.key === 'q' || e.key === 'Q') {
                         e.preventDefault();
                         this.brushSize = Math.max(1, this.brushSize - 1);
@@ -592,7 +815,7 @@
                     const mouseY = e.clientY - rect.top;
                     const oldZoom = this.zoom;
                     const zoomDelta = e.deltaY < 0 ? 0.1 : -0.1;
-                    this.zoom = Math.max(0.5, Math.min(4, oldZoom + zoomDelta));
+                    this.zoom = Math.max(0.1, Math.min(10, oldZoom + zoomDelta));
                     const deltaZoom = this.zoom - oldZoom;
                     this.panX -= (mouseX / oldZoom) * deltaZoom;
                     this.panY -= (mouseY / oldZoom) * deltaZoom;
@@ -610,6 +833,8 @@
                     } else if (e.button === 0) {
                         if (this.currentTool === 'lasso' || this.currentTool === 'lasso-eraser') {
                             this.startLasso(e);
+                        } else if (this.currentTool === 'fill') {
+                            this.fillArea(e);
                         } else {
                             this.startDrawing(e);
                         }
@@ -655,6 +880,13 @@
                 this.currentTool = tool;
                 document.querySelectorAll('#toolbar button').forEach(btn => btn.classList.remove('active'));
                 document.getElementById(`${tool}-tool`).classList.add('active');
+            }
+
+            showFillSettings(e) {
+                const panel = document.getElementById('fill-settings-panel');
+                panel.style.display = 'block';
+                panel.style.left = e.target.offsetLeft + 'px';
+                panel.style.top = e.target.offsetTop + e.target.offsetHeight + 'px';
             }
 
             getMousePos(e) {
@@ -744,7 +976,6 @@
                 this.lassoPoints = [pos];
                 this.isLassoDrawing = true;
                 this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
-                this.inputCtx.strokeStyle = '#000';
                 this.inputCtx.lineWidth = 1;
                 this.inputCtx.setLineDash([5, 5]);
                 this.drawLasso(e);
@@ -761,7 +992,37 @@
                     this.inputCtx.lineTo(this.lassoPoints[i].x, this.lassoPoints[i].y);
                 }
                 this.inputCtx.lineTo(this.lassoPoints[0].x, this.lassoPoints[0].y);
+                
+                const contrastColor = this.getContrastColorAt(pos.x, pos.y);
+                this.inputCtx.strokeStyle = contrastColor;
+                
                 this.inputCtx.stroke();
+            }
+
+            getContrastColorAt(x, y) {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = 1;
+                tempCanvas.height = 1;
+                const tempCtx = tempCanvas.getContext('2d');
+                
+                tempCtx.fillStyle = '#f0f0f0';
+                tempCtx.fillRect(0, 0, 1, 1);
+                
+                for (let i = 0; i < this.layers.length; i++) {
+                    if (this.layers[i].visible && i <= this.activeLayerIndex) {
+                        tempCtx.save();
+                        tempCtx.globalAlpha = this.layers[i].opacity;
+                        tempCtx.drawImage(this.layers[i].canvas, 
+                            Math.floor(x), Math.floor(y), 1, 1, 
+                            0, 0, 1, 1);
+                        tempCtx.restore();
+                    }
+                }
+                
+                const pixel = tempCtx.getImageData(0, 0, 1, 1).data;
+                const brightness = (pixel[0] * 0.299 + pixel[1] * 0.587 + pixel[2] * 0.114);
+                
+                return brightness > 128 ? '#000000' : '#ffffff';
             }
 
             stopLasso() {
@@ -805,6 +1066,97 @@
                 this.isLassoDrawing = false;
             }
 
+            fillArea(e) {
+                const pos = this.getMousePos(e);
+                const layer = this.layers[this.activeLayerIndex];
+                if (!layer.visible) return;
+                
+                this.saveState(layer);
+                
+                const x = Math.floor(pos.x);
+                const y = Math.floor(pos.y);
+                
+                const imageData = layer.ctx.getImageData(0, 0, this.containerWidth, this.containerHeight);
+                const targetColor = this.getPixelColor(imageData, x, y);
+                
+                const fillColor = this.hexToRgb(this.color);
+                
+                this.floodFill(layer.ctx, x, y, targetColor, fillColor, this.fillTolerance, this.fillAlphaTolerance);
+                
+                if (this.isLayersPanelOpen) {
+                    this.updateLayerUI();
+                }
+            }
+
+            getPixelColor(imageData, x, y) {
+                const index = (y * imageData.width + x) * 4;
+                return {
+                    r: imageData.data[index],
+                    g: imageData.data[index + 1],
+                    b: imageData.data[index + 2],
+                    a: imageData.data[index + 3]
+                };
+            }
+
+            hexToRgb(hex) {
+                const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                return result ? {
+                    r: parseInt(result[1], 16),
+                    g: parseInt(result[2], 16),
+                    b: parseInt(result[3], 16)
+                } : { r: 0, g: 0, b: 0 };
+            }
+
+            colorsMatch(color1, color2, tolerance, alphaTolerance) {
+                const dr = Math.abs(color1.r - color2.r);
+                const dg = Math.abs(color1.g - color2.g);
+                const db = Math.abs(color1.b - color2.b);
+                const da = Math.abs(color1.a - color2.a);
+                
+                return dr <= tolerance && dg <= tolerance && db <= tolerance && da <= alphaTolerance;
+            }
+
+            floodFill(ctx, startX, startY, targetColor, fillColor, tolerance, alphaTolerance) {
+                const imageData = ctx.getImageData(0, 0, this.containerWidth, this.containerHeight);
+                const pixels = imageData.data;
+                const width = this.containerWidth;
+                const height = this.containerHeight;
+                
+                const stack = [[startX, startY]];
+                const visited = new Set();
+                
+                while (stack.length > 0) {
+                    const [x, y] = stack.pop();
+                    const index = (y * width + x) * 4;
+                    
+                    if (x < 0 || x >= width || y < 0 || y >= height) continue;
+                    if (visited.has(`${x},${y}`)) continue;
+                    
+                    const currentColor = {
+                        r: pixels[index],
+                        g: pixels[index + 1],
+                        b: pixels[index + 2],
+                        a: pixels[index + 3]
+                    };
+                    
+                    if (this.colorsMatch(currentColor, targetColor, tolerance, alphaTolerance)) {
+                        pixels[index] = fillColor.r;
+                        pixels[index + 1] = fillColor.g;
+                        pixels[index + 2] = fillColor.b;
+                        pixels[index + 3] = 255;
+                        
+                        visited.add(`${x},${y}`);
+                        
+                        stack.push([x + 1, y]);
+                        stack.push([x - 1, y]);
+                        stack.push([x, y + 1]);
+                        stack.push([x, y - 1]);
+                    }
+                }
+                
+                ctx.putImageData(imageData, 0, 0);
+            }
+
             handleEraserDraw() {
                 const layer = this.layers[this.activeLayerIndex];
                 if (!layer.visible) return;
@@ -840,6 +1192,8 @@
             updateDisplays() {
                 document.getElementById('size-display').textContent = this.brushSize;
                 document.getElementById('stab-display').textContent = this.stabilizer;
+                document.getElementById('tolerance-display').textContent = this.fillTolerance;
+                document.getElementById('alpha-tolerance-display').textContent = this.fillAlphaTolerance;
             }
 
             updateCanvasTransform() {

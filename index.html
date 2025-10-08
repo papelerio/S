@@ -11,6 +11,132 @@
             padding: 0;
             background-color: #f0f0f0;
         }
+        /* Panel de colores favoritos */
+        #favorites-panel {
+            width: 200px;
+            background: #333;
+            padding: 15px;
+            color: white;
+            position: fixed;
+            left: 0;
+            top: 0;
+            height: 100vh;
+            overflow-y: auto;
+            z-index: 150;
+        }
+        #favorites-panel h3 {
+            margin-top: 0;
+            text-align: center;
+            color: #fff;
+            border-bottom: 1px solid #555;
+            padding-bottom: 10px;
+        }
+        #add-color-btn {
+            width: 100%;
+            padding: 10px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        #add-color-btn:hover {
+            background: #0056b3;
+        }
+        #add-color-btn.selecting {
+            background: #28a745;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        #favorites-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+        .color-slot {
+            width: 40px;
+            height: 40px;
+            border: 2px solid #555;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #444;
+            position: relative;
+        }
+        .color-slot:hover {
+            transform: scale(1.1);
+            border-color: #fff;
+        }
+        .color-slot.empty {
+            background: repeating-linear-gradient(
+                45deg,
+                #444,
+                #444 4px,
+                #555 4px,
+                #555 8px
+            );
+        }
+        .color-slot.empty::after {
+            content: "+";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #777;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .color-slot.selected {
+            border: 3px solid gold;
+            box-shadow: 0 0 10px gold;
+        }
+        .color-slot .color-tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            white-space: nowrap;
+            display: none;
+            z-index: 200;
+        }
+        .color-slot:hover .color-tooltip {
+            display: block;
+        }
+        #selection-instruction {
+            background: #444;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            text-align: center;
+            margin-top: 10px;
+            display: none;
+        }
+        #selection-instruction.show {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Contenido principal */
+        #main-content {
+            margin-left: 230px;
+            min-height: 100vh;
+        }
         #toolbar {
             background-color: #333;
             color: white;
@@ -249,6 +375,19 @@
     </style>
 </head>
 <body>
+    <!-- Panel de colores favoritos -->
+    <div id="favorites-panel">
+        <h3>🎨 Colores Favoritos</h3>
+        <button id="add-color-btn">Añadir Color Actual</button>
+        <div id="favorites-grid">
+            <!-- 16 slots de colores (4x4) -->
+        </div>
+        <div id="selection-instruction">
+            <strong>Modo Selección</strong><br>
+            Haz click en una casilla para guardar el color
+        </div>
+    </div>
+
     <!-- Modal de selección de tamaño -->
     <div id="canvas-size-modal">
         <div class="modal-content">
@@ -292,49 +431,50 @@
         </div>
     </div>
 
-    <div id="toolbar" style="display: none;">
-        <button id="brush-tool">Pincel</button>
-        <button id="eraser-tool">Borrador</button>
-        <button id="lasso-tool">Relleno Lazo</button>
-        <button id="lasso-eraser-tool">Borrador Lazo</button>
-        <button id="fill-tool">Relleno</button>
-        <input type="color" id="color-picker" value="#000000">
-        <input type="range" id="brush-size" min="1" max="50" value="5" style="width: 100px;">
-        <label>Tamaño: <span id="size-display">5</span></label>
-        <input type="range" id="stabilizer" min="0" max="10" value="0" style="width: 100px;">
-        <label>Estabilizador: <span id="stab-display">0</span></label>
-        <button id="clear-layer">Limpiar Capa</button>
-        <button id="download-btn">Descargar Imagen</button>
-        <button id="layers-button">Capas</button>
-        
-        <!-- Panel de configuración de relleno -->
-        <div id="fill-settings-panel" class="fill-settings-panel">
-            <label for="fill-tolerance">Tolerancia: <span id="tolerance-display">30</span></label>
-            <input type="range" id="fill-tolerance" min="0" max="255" value="30">
-            <label for="fill-alpha-tolerance">Tolerancia Alpha: <span id="alpha-tolerance-display">50</span></label>
-            <input type="range" id="fill-alpha-tolerance" min="0" max="255" value="50">
-            <small style="color: #ccc; font-size: 10px;">¡Tolerancia máxima ahora es 255! 💪</small>
+    <div id="main-content">
+        <div id="toolbar" style="display: none;">
+            <button id="brush-tool">Pincel</button>
+            <button id="eraser-tool">Borrador</button>
+            <button id="lasso-tool">Relleno Lazo</button>
+            <button id="lasso-eraser-tool">Borrador Lazo</button>
+            <button id="fill-tool">Relleno</button>
+            <input type="color" id="color-picker" value="#000000">
+            <input type="range" id="brush-size" min="1" max="50" value="5" style="width: 100px;">
+            <label>Tamaño: <span id="size-display">5</span></label>
+            <input type="range" id="stabilizer" min="0" max="10" value="0" style="width: 100px;">
+            <label>Estabilizador: <span id="stab-display">0</span></label>
+            <button id="clear-layer">Limpiar Capa</button>
+            <button id="download-btn">Descargar Imagen</button>
+            <button id="layers-button">Capas</button>
+            
+            <!-- Panel de configuración de relleno -->
+            <div id="fill-settings-panel" class="fill-settings-panel">
+                <label for="fill-tolerance">Tolerancia: <span id="tolerance-display">30</span></label>
+                <input type="range" id="fill-tolerance" min="0" max="255" value="30">
+                <label for="fill-alpha-tolerance">Tolerancia Alpha: <span id="alpha-tolerance-display">50</span></label>
+                <input type="range" id="fill-alpha-tolerance" min="0" max="255" value="50">
+                <small style="color: #ccc; font-size: 10px;">¡Tolerancia máxima ahora es 255! 💪</small>
+            </div>
         </div>
-    </div>
-    <div id="canvas-container" style="display: none;"></div>
-    <div id="layers-panel">
-        <table id="layers-table">
-            <thead>
-                <tr>
-                    <th>Preview</th>
-                    <th>Controles</th>
-                </tr>
-            </thead>
-            <tbody id="layers-tbody"></tbody>
-        </table>
-        <button onclick="illustrator.addLayer()">+ Capa</button>
+        <div id="canvas-container" style="display: none;"></div>
+        <div id="layers-panel">
+            <table id="layers-table">
+                <thead>
+                    <tr>
+                        <th>Preview</th>
+                        <th>Controles</th>
+                    </tr>
+                </thead>
+                <tbody id="layers-tbody"></tbody>
+            </table>
+            <button onclick="illustrator.addLayer()">+ Capa</button>
+        </div>
     </div>
 
     <script>
         class DigitalIllustrator {
             constructor() {
                 this.canvasContainer = document.getElementById('canvas-container');
-                this.canvasStack = document.getElementById('canvas-stack');
                 this.containerWidth = 800;
                 this.containerHeight = 600;
                 this.layers = [];
@@ -357,7 +497,100 @@
                 this.fillTolerance = 30;
                 this.fillAlphaTolerance = 50;
 
+                // Nuevas propiedades para colores favoritos
+                this.favoriteColors = Array(16).fill(null);
+                this.isSelectingColorSlot = false;
+
+                this.initFavoritesPanel();
                 this.initCanvasSizeModal();
+            }
+
+            initFavoritesPanel() {
+                const addColorBtn = document.getElementById('add-color-btn');
+                const instruction = document.getElementById('selection-instruction');
+
+                this.renderFavoritesGrid();
+
+                addColorBtn.addEventListener('click', () => {
+                    if (!this.isSelectingColorSlot) {
+                        this.isSelectingColorSlot = true;
+                        addColorBtn.textContent = 'Cancelar Selección';
+                        addColorBtn.classList.add('selecting');
+                        instruction.classList.add('show');
+                    } else {
+                        this.cancelColorSelection();
+                    }
+                });
+
+                this.loadFavoriteColors();
+            }
+
+            renderFavoritesGrid() {
+                const favoritesGrid = document.getElementById('favorites-grid');
+                favoritesGrid.innerHTML = '';
+
+                this.favoriteColors.forEach((color, index) => {
+                    const colorSlot = document.createElement('div');
+                    colorSlot.className = `color-slot ${color ? '' : 'empty'}`;
+                    
+                    if (color) {
+                        colorSlot.style.backgroundColor = color;
+                        colorSlot.innerHTML = `<div class="color-tooltip">${color}</div>`;
+                    }
+
+                    colorSlot.addEventListener('click', () => {
+                        if (this.isSelectingColorSlot) {
+                            this.favoriteColors[index] = this.color;
+                            this.renderFavoritesGrid();
+                            this.saveFavoriteColors();
+                            this.cancelColorSelection();
+                            
+                            colorSlot.animate([
+                                { transform: 'scale(1)' },
+                                { transform: 'scale(1.2)' },
+                                { transform: 'scale(1)' }
+                            ], { duration: 300 });
+                        } else if (color) {
+                            this.color = color;
+                            document.getElementById('color-picker').value = color;
+                            
+                            colorSlot.classList.add('selected');
+                            setTimeout(() => {
+                                colorSlot.classList.remove('selected');
+                            }, 500);
+                        }
+                    });
+
+                    colorSlot.addEventListener('dblclick', (e) => {
+                        e.preventDefault();
+                        if (color && !this.isSelectingColorSlot) {
+                            this.favoriteColors[index] = null;
+                            this.renderFavoritesGrid();
+                            this.saveFavoriteColors();
+                        }
+                    });
+
+                    favoritesGrid.appendChild(colorSlot);
+                });
+            }
+
+            cancelColorSelection() {
+                this.isSelectingColorSlot = false;
+                document.getElementById('add-color-btn').textContent = 'Añadir Color Actual';
+                document.getElementById('add-color-btn').classList.remove('selecting');
+                document.getElementById('selection-instruction').classList.remove('show');
+            }
+
+            saveFavoriteColors() {
+                localStorage.setItem('illustrator-favorite-colors', JSON.stringify(this.favoriteColors));
+            }
+
+            loadFavoriteColors() {
+                const saved = localStorage.getItem('illustrator-favorite-colors');
+                if (saved) {
+                    this.favoriteColors = JSON.parse(saved);
+                    this.renderFavoritesGrid();
+                }
             }
 
             initCanvasSizeModal() {
@@ -398,7 +631,6 @@
                     this.updateDisplays();
                 });
 
-                // Enter para crear lienzo
                 customWidth.addEventListener('keypress', (e) => {
                     if (e.key === 'Enter') createBtn.click();
                 });
@@ -408,7 +640,6 @@
             }
 
             initCanvas() {
-                // Configurar contenedor
                 this.canvasContainer.style.width = this.containerWidth + 'px';
                 this.canvasContainer.style.height = this.containerHeight + 'px';
                 
@@ -417,7 +648,6 @@
                 this.canvasContainer.innerHTML = '';
                 this.canvasContainer.appendChild(this.canvasStack);
 
-                // Canvas de cuadricula de ajedrez para transparencia
                 this.checkerboardCanvas = document.createElement('canvas');
                 this.checkerboardCanvas.id = 'checkerboard-canvas';
                 this.checkerboardCanvas.width = this.containerWidth;
@@ -742,7 +972,6 @@
                     document.getElementById('stab-display').textContent = this.stabilizer;
                 });
 
-                // Configuración de tolerancia de relleno MÁS POTENTE
                 document.getElementById('fill-tolerance').addEventListener('input', (e) => {
                     this.fillTolerance = parseInt(e.target.value);
                     document.getElementById('tolerance-display').textContent = this.fillTolerance;
@@ -757,6 +986,10 @@
                 document.getElementById('layers-button').addEventListener('click', () => this.toggleLayersPanel());
 
                 document.addEventListener('click', (e) => {
+                    if (!e.target.closest('#favorites-panel') && this.isSelectingColorSlot) {
+                        this.cancelColorSelection();
+                    }
+                    
                     if (!e.target.closest('#fill-settings-panel') && !e.target.closest('#fill-tool')) {
                         document.getElementById('fill-settings-panel').style.display = 'none';
                     }

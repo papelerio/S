@@ -5,10 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Illustrador Digital Pro - HTML5</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
+        html, body {
+            height: 100%;
+            overflow: hidden;
             margin: 0;
             padding: 0;
+        }
+        body {
+            font-family: Arial, sans-serif;
             background-color: #f0f0f0;
         }
         /* Panel de colores favoritos */
@@ -135,7 +139,8 @@
         /* Contenido principal */
         #main-content {
             margin-left: 230px;
-            min-height: 100vh;
+            height: 100vh;
+            overflow: hidden;
         }
         #toolbar {
             background-color: #333;
@@ -161,6 +166,14 @@
         }
         #toolbar button.active {
             background-color: #007bff;
+        }
+        #download-btn, #copy-btn {
+            background-color: gold;
+            color: black;
+            font-weight: bold;
+        }
+        #download-btn:hover, #copy-btn:hover {
+            background-color: #ffd700;
         }
         #color-picker {
             width: 40px;
@@ -380,7 +393,7 @@
         <h3>🎨 Colores Favoritos</h3>
         <button id="add-color-btn">Añadir Color Actual</button>
         <div id="favorites-grid">
-            <!-- 16 slots de colores (4x4) -->
+            <!-- 24 slots de colores (4x6) -->
         </div>
         <div id="selection-instruction">
             <strong>Modo Selección</strong><br>
@@ -445,6 +458,7 @@
             <label>Estabilizador: <span id="stab-display">0</span></label>
             <button id="clear-layer">Limpiar Capa</button>
             <button id="download-btn">Descargar Imagen</button>
+            <button id="copy-btn">Copiar Imagen</button>
             <button id="layers-button">Capas</button>
             
             <!-- Panel de configuración de relleno -->
@@ -498,7 +512,7 @@
                 this.fillAlphaTolerance = 50;
 
                 // Nuevas propiedades para colores favoritos
-                this.favoriteColors = Array(16).fill(null);
+                this.favoriteColors = Array(24).fill(null);
                 this.isSelectingColorSlot = false;
 
                 this.initFavoritesPanel();
@@ -778,6 +792,29 @@
                 this.layers[index].canvas.style.opacity = opacity;
             }
 
+            async copyImage() {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = this.containerWidth;
+                tempCanvas.height = this.containerHeight;
+                const tempCtx = tempCanvas.getContext('2d');
+
+                this.drawCheckerboardOnCtx(tempCtx);
+
+                this.layers.forEach(layer => {
+                    if (layer.visible) {
+                        tempCtx.save();
+                        tempCtx.globalAlpha = layer.opacity;
+                        tempCtx.drawImage(layer.canvas, 0, 0);
+                        tempCtx.restore();
+                    }
+                });
+
+                tempCanvas.toBlob(async (blob) => {
+                    const item = new ClipboardItem({ 'image/png': blob });
+                    await navigator.clipboard.write([item]);
+                }, 'image/png');
+            }
+
             downloadImage() {
                 const tempCanvas = document.createElement('canvas');
                 tempCanvas.width = this.containerWidth;
@@ -881,9 +918,12 @@
             updateLayerUI() {
                 const tbody = document.getElementById('layers-tbody');
                 tbody.innerHTML = '';
-                this.layers.forEach((layer, index) => {
+                // Renderizar en orden inverso: primera fila es la capa superior (índice más alto)
+                const reversedLayers = [...this.layers].reverse();
+                reversedLayers.forEach((layer, uiIndex) => {
+                    const actualIndex = this.layers.length - 1 - uiIndex;
                     const tr = document.createElement('tr');
-                    if (index === this.activeLayerIndex) {
+                    if (actualIndex === this.activeLayerIndex) {
                         tr.classList.add('active');
                     }
                     const previewTd = document.createElement('td');
@@ -896,7 +936,7 @@
                     previewTd.appendChild(previewCanvas);
                     previewTd.style.cursor = 'pointer';
                     previewTd.addEventListener('click', () => {
-                        this.activeLayerIndex = index;
+                        this.activeLayerIndex = actualIndex;
                         this.updateLayerUI();
                     });
 
@@ -904,12 +944,12 @@
                     const visIcon = layer.visible ? '👁' : '🙈';
                     const opacityValue = Math.round(layer.opacity * 100);
                     controlsTd.innerHTML = `
-                        <input type="text" value="${layer.name}" onchange="illustrator.renameLayer(${index}, this.value)">
-                        <button onclick="illustrator.moveLayer(${index}, 'up')">↑</button>
-                        <button onclick="illustrator.moveLayer(${index}, 'down')">↓</button>
-                        <button onclick="illustrator.toggleVisibility(${index})">${visIcon}</button>
-                        <input type="range" min="0" max="100" value="${opacityValue}" onchange="illustrator.setOpacity(${index}, this.value)">
-                        <button onclick="illustrator.deleteSpecificLayer(${index})">Borrar</button>
+                        <input type="text" value="${layer.name}" onchange="illustrator.renameLayer(${actualIndex}, this.value)">
+                        <button onclick="illustrator.moveLayer(${actualIndex}, 'up')">↑</button>
+                        <button onclick="illustrator.moveLayer(${actualIndex}, 'down')">↓</button>
+                        <button onclick="illustrator.toggleVisibility(${actualIndex})">${visIcon}</button>
+                        <input type="range" min="0" max="100" value="${opacityValue}" onchange="illustrator.setOpacity(${actualIndex}, this.value)">
+                        <button onclick="illustrator.deleteSpecificLayer(${actualIndex})">Borrar</button>
                     `;
                     tr.appendChild(previewTd);
                     tr.appendChild(controlsTd);
@@ -957,6 +997,15 @@
                 });
 
                 document.getElementById('download-btn').addEventListener('click', () => this.downloadImage());
+                const copyBtn = document.getElementById('copy-btn');
+                copyBtn.addEventListener('click', () => {
+                    this.copyImage();
+                    copyBtn.animate([
+                        { boxShadow: '0 0 0 gold' },
+                        { boxShadow: '0 0 20px gold' },
+                        { boxShadow: '0 0 0 gold' }
+                    ], { duration: 500 });
+                });
 
                 document.getElementById('color-picker').addEventListener('change', (e) => {
                     this.color = e.target.value;

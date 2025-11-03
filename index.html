@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -716,11 +717,22 @@
             }
 
             initLayers() {
-                const bgLayer = this.createLayer('Fondo', true);
-                this.layers.push(bgLayer);
-                this.saveState(bgLayer);
-                this.updateLayerVisibility();
-            }
+    // Crear capa de fondo (solo para visualización)
+    const bgLayer = this.createLayer('Fondo', true);
+    this.layers.push(bgLayer);
+    this.saveState(bgLayer);
+    
+    // Crear capa de trabajo principal automáticamente
+    const workLayer = this.createLayer('Capa 1', false);
+    this.layers.push(workLayer);
+    this.saveState(workLayer);
+    
+    // Establecer la capa de trabajo como activa por defecto
+    this.activeLayerIndex = 1; // Índice 1 = segunda capa (Capa 1)
+    
+    this.updateLayerVisibility();
+    this.updateLayerUI(); // Actualizar la interfaz para mostrar la capa activa
+}
 
             createLayer(name, isBackground = false) {
                 const canvas = document.createElement('canvas');
@@ -793,50 +805,62 @@
             }
 
             async copyImage() {
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = this.containerWidth;
-                tempCanvas.height = this.containerHeight;
-                const tempCtx = tempCanvas.getContext('2d');
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = this.containerWidth;
+    tempCanvas.height = this.containerHeight;
+    const tempCtx = tempCanvas.getContext('2d');
 
-                this.drawCheckerboardOnCtx(tempCtx);
+    // FONDO TRANSPARENTE
+    tempCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
 
-                this.layers.forEach(layer => {
-                    if (layer.visible) {
-                        tempCtx.save();
-                        tempCtx.globalAlpha = layer.opacity;
-                        tempCtx.drawImage(layer.canvas, 0, 0);
-                        tempCtx.restore();
-                    }
-                });
+    // Dibujar solo las capas visibles
+    this.layers.forEach(layer => {
+        if (layer.visible) {
+            tempCtx.save();
+            tempCtx.globalAlpha = layer.opacity;
+            tempCtx.drawImage(layer.canvas, 0, 0);
+            tempCtx.restore();
+        }
+    });
 
-                tempCanvas.toBlob(async (blob) => {
-                    const item = new ClipboardItem({ 'image/png': blob });
-                    await navigator.clipboard.write([item]);
-                }, 'image/png');
-            }
+    tempCanvas.toBlob(async (blob) => {
+        const item = new ClipboardItem({ 'image/png': blob });
+        await navigator.clipboard.write([item]);
+        
+        // Efecto visual de confirmación
+        const copyBtn = document.getElementById('copy-btn');
+        copyBtn.animate([
+            { boxShadow: '0 0 0 gold' },
+            { boxShadow: '0 0 20px gold' },
+            { boxShadow: '0 0 0 gold' }
+        ], { duration: 500 });
+    }, 'image/png');
+}
 
             downloadImage() {
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = this.containerWidth;
-                tempCanvas.height = this.containerHeight;
-                const tempCtx = tempCanvas.getContext('2d');
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = this.containerWidth;
+    tempCanvas.height = this.containerHeight;
+    const tempCtx = tempCanvas.getContext('2d');
 
-                this.drawCheckerboardOnCtx(tempCtx);
+    // FONDO TRANSPARENTE en lugar del ajedrez
+    tempCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
 
-                this.layers.forEach(layer => {
-                    if (layer.visible) {
-                        tempCtx.save();
-                        tempCtx.globalAlpha = layer.opacity;
-                        tempCtx.drawImage(layer.canvas, 0, 0);
-                        tempCtx.restore();
-                    }
-                });
+    // Dibujar solo las capas visibles
+    this.layers.forEach(layer => {
+        if (layer.visible) {
+            tempCtx.save();
+            tempCtx.globalAlpha = layer.opacity;
+            tempCtx.drawImage(layer.canvas, 0, 0);
+            tempCtx.restore();
+        }
+    });
 
-                const link = document.createElement('a');
-                link.download = `mi-ilustracion-${this.containerWidth}x${this.containerHeight}.png`;
-                link.href = tempCanvas.toDataURL('image/png');
-                link.click();
-            }
+    const link = document.createElement('a');
+    link.download = `mi-ilustracion-${this.containerWidth}x${this.containerHeight}.png`;
+    link.href = tempCanvas.toDataURL('image/png');
+    link.click();
+}
 
             drawCheckerboardOnCtx(ctx) {
                 const size = 20;

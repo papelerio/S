@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -798,10 +799,13 @@
             }
 
             setOpacity(index, value) {
-                const opacity = value / 100;
-                this.layers[index].opacity = opacity;
-                this.layers[index].canvas.style.opacity = opacity;
-            }
+    const opacity = value / 100;
+    this.layers[index].opacity = opacity;
+    this.layers[index].canvas.style.opacity = opacity;
+    
+    // Actualizar inmediatamente en pantalla (no esperar a soltar el mouse)
+    this.updateLayerVisibility();
+}
 
             async copyImage() {
     const tempCanvas = document.createElement('canvas');
@@ -932,11 +936,16 @@
                 });
             }
 
-            updateLayerVisibility() {
-                this.layers.forEach(layer => {
-                    layer.canvas.style.display = layer.visible ? 'block' : 'none';
-                });
-            }
+          updateLayerVisibility() {
+    this.layers.forEach(layer => {
+        if (layer.visible) {
+            layer.canvas.style.display = 'block';
+            // La opacidad ya se establece en setOpacity(), así que no la sobrescribimos aquí
+        } else {
+            layer.canvas.style.display = 'none';
+        }
+    });
+}
 
             updateLayerUI() {
                 const tbody = document.getElementById('layers-tbody');
@@ -971,7 +980,7 @@
                         <button onclick="illustrator.moveLayer(${actualIndex}, 'up')">↑</button>
                         <button onclick="illustrator.moveLayer(${actualIndex}, 'down')">↓</button>
                         <button onclick="illustrator.toggleVisibility(${actualIndex})">${visIcon}</button>
-                        <input type="range" min="0" max="100" value="${opacityValue}" onchange="illustrator.setOpacity(${actualIndex}, this.value)">
+                        <input type="range" min="0" max="100" value="${opacityValue}" oninput="illustrator.setOpacity(${actualIndex}, this.value)">
                         <button onclick="illustrator.deleteSpecificLayer(${actualIndex})">Borrar</button>
                     `;
                     tr.appendChild(previewTd);
@@ -1276,33 +1285,45 @@
                 this.points = [];
             }
 
-            startLasso(e) {
-                const pos = this.getMousePos(e);
-                this.lassoPoints = [pos];
-                this.isLassoDrawing = true;
-                this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
-                this.inputCtx.lineWidth = 1;
-                this.inputCtx.setLineDash([5, 5]);
-                this.drawLasso(e);
-            }
+           startLasso(e) {
+    const pos = this.getMousePos(e);
+    this.lassoPoints = [pos];
+    this.isLassoDrawing = true;
+    this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+}
 
             drawLasso(e) {
-                if (!this.isLassoDrawing) return;
-                const pos = this.getMousePos(e);
-                this.lassoPoints.push(pos);
-                this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
-                this.inputCtx.beginPath();
-                this.inputCtx.moveTo(this.lassoPoints[0].x, this.lassoPoints[0].y);
-                for (let i = 1; i < this.lassoPoints.length; i++) {
-                    this.inputCtx.lineTo(this.lassoPoints[i].x, this.lassoPoints[i].y);
-                }
-                this.inputCtx.lineTo(this.lassoPoints[0].x, this.lassoPoints[0].y);
-                
-                const contrastColor = this.getContrastColorAt(pos.x, pos.y);
-                this.inputCtx.strokeStyle = contrastColor;
-                
-                this.inputCtx.stroke();
-            }
+    if (!this.isLassoDrawing) return;
+    const pos = this.getMousePos(e);
+    this.lassoPoints.push(pos);
+    this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+    
+    // Dibujar el relleno en tiempo real
+    if (this.lassoPoints.length >= 2) {
+        this.inputCtx.beginPath();
+        this.inputCtx.moveTo(this.lassoPoints[0].x, this.lassoPoints[0].y);
+        for (let i = 1; i < this.lassoPoints.length; i++) {
+            this.inputCtx.lineTo(this.lassoPoints[i].x, this.lassoPoints[i].y);
+        }
+        this.inputCtx.closePath();
+        
+        // Rellenar con el color actual (para lasso normal) o transparente (para borrador)
+        if (this.currentTool === 'lasso') {
+            this.inputCtx.fillStyle = this.color + '80'; // 80 = 50% de transparencia
+            this.inputCtx.fill();
+        } else if (this.currentTool === 'lasso-eraser') {
+            this.inputCtx.fillStyle = 'rgba(255, 0, 0, 0.3)'; // Rojo semitransparente para borrar
+            this.inputCtx.fill();
+        }
+        
+        // Dibujar el borde
+        this.inputCtx.strokeStyle = this.currentTool === 'lasso-eraser' ? '#ff0000' : this.color;
+        this.inputCtx.setLineDash([5, 5]);
+        this.inputCtx.lineWidth = 2;
+        this.inputCtx.stroke();
+        this.inputCtx.setLineDash([]);
+    }
+}
 
             getContrastColorAt(x, y) {
                 const tempCanvas = document.createElement('canvas');
@@ -1331,12 +1352,14 @@
             }
 
             stopLasso() {
-                if (!this.isLassoDrawing || this.lassoPoints.length < 3) {
-                    this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
-                    this.lassoPoints = [];
-                    this.isLassoDrawing = false;
-                    return;
-                }
+    if (!this.isLassoDrawing || this.lassoPoints.length < 3) {
+        this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+        this.lassoPoints = [];
+        this.isLassoDrawing = false;
+        return;
+    }
+this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+    
                 const layer = this.layers[this.activeLayerIndex];
                 if (!layer.visible) {
                     this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);

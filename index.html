@@ -2127,13 +2127,15 @@
                 }
             }
             handlePointerLeave(e) {
-                this.stopDrawing();
-                this.stopLasso();
-                this.stopPinch();
-                if (this.isPanning) {
-                    this.isPanning = false;
-                    this.canvasContainer.style.cursor = this.currentTool === 'pan' ? 'grab' : 'crosshair';
-                }
+             if (!this.inputCanvas.hasPointerCapture(e.pointerId)) {
+    this.stopDrawing();
+    this.stopLasso();
+}
+this.stopPinch();
+if (this.isPanning) {
+    this.isPanning = false;
+    this.canvasContainer.style.cursor = this.currentTool === 'pan' ? 'grab' : 'crosshair';
+}
             }
             showFillSettings(e) {
                 const panel = document.getElementById('fill-settings-panel');
@@ -2159,6 +2161,7 @@
                 this.saveState(layer);
                 this.isDrawing = true;
                 this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+this.inputCanvas.setPointerCapture(e.pointerId);
             }
             getPixelAlpha(ctx, x, y) {
                 const imageData = ctx.getImageData(Math.floor(x), Math.floor(y), 1, 1);
@@ -2240,7 +2243,8 @@
                 const pos = this.getMousePos(e);
                 this.lassoPoints = [pos];
                 this.isLassoDrawing = true;
-                this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+               this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+this.inputCanvas.setPointerCapture(e.pointerId);
             }
             drawLasso(e) {
                 if (this.currentTool !== 'lasso' && this.currentTool !== 'lasso-eraser') return;

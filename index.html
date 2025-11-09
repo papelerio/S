@@ -279,7 +279,7 @@
             width: 100%;
         }
         /* Modal de tamaño de lienzo */
-        #canvas-size-modal {
+        #canvas-size-modal, #import-image-modal {
             position: fixed;
             top: 0;
             left: 0;
@@ -291,14 +291,14 @@
             align-items: center;
             z-index: 1000;
         }
-        #canvas-size-modal .modal-content {
+        #canvas-size-modal .modal-content, #import-image-modal .modal-content {
             background: white;
             padding: 30px;
             border-radius: 10px;
             text-align: center;
             min-width: 400px;
         }
-        #canvas-size-modal h2 {
+        #canvas-size-modal h2, #import-image-modal h2 {
             margin-top: 0;
             color: #333;
         }
@@ -336,7 +336,7 @@
             border: 1px solid #ccc;
             border-radius: 4px;
         }
-        #create-canvas-btn, #load-progress-modal-btn {
+        #create-canvas-btn, #load-progress-modal-btn, #import-image-btn, #import-btn, #cancel-import-btn {
             background: #28a745;
             color: white;
             border: none;
@@ -346,8 +346,14 @@
             font-size: 16px;
             margin: 5px;
         }
-        #create-canvas-btn:hover, #load-progress-modal-btn:hover {
+        #create-canvas-btn:hover, #load-progress-modal-btn:hover, #import-image-btn:hover, #import-btn:hover {
             background: #218838;
+        }
+        #cancel-import-btn {
+            background: #dc3545;
+        }
+        #cancel-import-btn:hover {
+            background: #c82333;
         }
         #layers-button {
             background: #007bff;
@@ -405,17 +411,34 @@
             width: 60px;
         }
         #layers-table button {
-            padding: 2px 4px;
-            margin: 1px;
-            font-size: 10px;
+            padding: 4px 6px;
+            margin: 2px;
+            font-size: 12px;
             background: #555;
             color: white;
             border: none;
-            border-radius: 2px;
+            border-radius: 3px;
             cursor: pointer;
+            min-width: 30px;
         }
         #layers-table button:hover {
             background: #666;
+        }
+        #layers-table button.visibility-btn {
+            background: #28a745;
+            color: white;
+        }
+        #layers-table button.visibility-btn.hidden {
+            background: #dc3545;
+            color: white;
+        }
+        #layers-table button.lock-btn {
+            background: #28a745;
+            color: white;
+        }
+        #layers-table button.lock-btn.locked {
+            background: #dc3545;
+            color: white;
         }
         #layers-table tr.active {
             background-color: gold;
@@ -561,6 +584,14 @@
         #opacity-container {
             display: none;
         }
+        #image-file {
+            margin: 20px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 100%;
+            box-sizing: border-box;
+        }
     </style>
 </head>
 <body>
@@ -629,6 +660,27 @@
             </div>
             <button id="create-canvas-btn">Crear Lienzo</button>
             <button id="load-progress-modal-btn">Cargar Progreso</button>
+            <button id="import-image-btn">Importar Imagen</button>
+        </div>
+    </div>
+    <!-- Modal de importar imagen -->
+    <div id="import-image-modal" style="display: none;">
+        <div class="modal-content">
+            <h2>📁 Importar Imagen</h2>
+            <input type="file" id="image-file" accept="image/*">
+            <div class="custom-size">
+                <h3>Tamaño del Lienzo</h3>
+                <input type="number" id="import-width" placeholder="Ancho" min="100" max="5000">
+                <span>px ×</span>
+                <input type="number" id="import-height" placeholder="Alto" min="100" max="5000">
+                <span>px</span>
+            </div>
+            <div class="extra-option">
+                <input type="checkbox" id="maintain-aspect" checked>
+                <label for="maintain-aspect">Mantener proporción relativa</label>
+            </div>
+            <button id="import-btn">Importar</button>
+            <button id="cancel-import-btn">Cancelar</button>
         </div>
     </div>
     <!-- Modal de progreso -->
@@ -676,6 +728,7 @@
             <button id="pan-tool">Desplazar (X)</button>
             <button id="brush-tool">Pincel (1)</button>
             <button id="eraser-tool">Borrador (2)</button>
+            <button id="smudge-tool">Difuminar (4)</button>
             <button id="lasso-tool">Relleno Lazo (3)</button>
             <button id="lasso-eraser-tool">Borrador Lazo (C)</button>
             <button id="fill-tool">Relleno (5)</button>
@@ -745,8 +798,8 @@
                 this.fillTolerance = 30;
                 this.fillAlphaTolerance = 50;
                 // Valores individuales por herramienta
-                this.toolSizes = { brush: 5, eraser: 5 };
-                this.toolOpacities = { brush: 100, eraser: 100, lasso: 100, 'lasso-eraser': 100 };
+                this.toolSizes = { brush: 5, eraser: 5, smudge: 20 };
+                this.toolOpacities = { brush: 100, eraser: 100, lasso: 100, 'lasso-eraser': 100, smudge: 50 };
                 // Opciones extras
                 this.realTimeOpacity = true;
                 this.lassoLineStyle = 'default';
@@ -774,12 +827,103 @@
                 this.startH = 0;
                 this.handleResizeMove = this.handleResizeMove.bind(this);
                 this.stopResize = this.stopResize.bind(this);
+                // Propiedades para importar imagen
+                this.currentAspect = null;
+                this.selectedImageData = null;
                 this.initFavoritesPanel();
                 this.initExtrasPanel();
                 this.initCanvasSizeModal();
+                this.initImportModal();
                 this.initProgressSystem();
                 this.initToolbar();
                 this.initGlobalEvents();
+            }
+            initImportModal() {
+                const importBtn = document.getElementById('import-image-btn');
+                const importModal = document.getElementById('import-image-modal');
+                const fileInput = document.getElementById('image-file');
+                const widthInput = document.getElementById('import-width');
+                const heightInput = document.getElementById('import-height');
+                const aspectToggle = document.getElementById('maintain-aspect');
+                const importConfirmBtn = document.getElementById('import-btn');
+                const cancelBtn = document.getElementById('cancel-import-btn');
+                importBtn.addEventListener('click', () => {
+                    importModal.style.display = 'flex';
+                });
+                fileInput.addEventListener('change', (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                            const img = new Image();
+                            img.onload = () => {
+                                this.currentAspect = img.naturalWidth / img.naturalHeight;
+                                widthInput.value = img.naturalWidth;
+                                heightInput.value = img.naturalHeight;
+                                this.selectedImageData = ev.target.result; // Guardar dataURL para importar después
+                            };
+                            img.src = ev.target.result;
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                });
+                aspectToggle.addEventListener('change', () => {
+                    // El toggle solo afecta los inputs, no necesita más lógica aquí
+                });
+                widthInput.addEventListener('input', () => {
+                    if (aspectToggle.checked && this.currentAspect) {
+                        const newHeight = (widthInput.value / this.currentAspect);
+                        heightInput.value = Math.round(newHeight);
+                    }
+                });
+                heightInput.addEventListener('input', () => {
+                    if (aspectToggle.checked && this.currentAspect) {
+                        const newWidth = (heightInput.value * this.currentAspect);
+                        widthInput.value = Math.round(newWidth);
+                    }
+                });
+                importConfirmBtn.addEventListener('click', () => {
+                    const w = parseInt(widthInput.value) || 800;
+                    const h = parseInt(heightInput.value) || 600;
+                    if (w < 100 || h < 100 || w > 5000 || h > 5000) {
+                        alert('El tamaño debe estar entre 100 y 5000 píxeles.');
+                        return;
+                    }
+                    if (!this.selectedImageData) {
+                        alert('Por favor, selecciona una imagen.');
+                        return;
+                    }
+                    // Cerrar modales
+                    importModal.style.display = 'none';
+                    document.getElementById('canvas-size-modal').style.display = 'none';
+                    // Configurar y crear lienzo
+                    this.containerWidth = w;
+                    this.containerHeight = h;
+                    this.initCanvas();
+                    this.bindEvents();
+                    this.updateDisplays();
+                    // Dibujar imagen en la primera capa de trabajo
+                    const img = new Image();
+                    img.onload = () => {
+                        const workLayer = this.layers[1]; // Capa 1 (trabajo)
+                        workLayer.ctx.clearRect(0, 0, w, h);
+                        workLayer.ctx.drawImage(img, 0, 0, w, h);
+                        if (this.isLayersPanelOpen) this.updateLayerUI();
+                        if (this.onCanvasCreated) this.onCanvasCreated();
+                    };
+                    img.src = this.selectedImageData;
+                    // Mostrar UI
+                    document.getElementById('toolbar').style.display = 'flex';
+                    this.canvasContainer.style.display = 'block';
+                });
+                cancelBtn.addEventListener('click', () => {
+                    importModal.style.display = 'none';
+                    fileInput.value = ''; // Limpiar selección
+                    widthInput.value = '';
+                    heightInput.value = '';
+                    this.currentAspect = null;
+                    this.selectedImageData = null;
+                });
             }
             initExtrasPanel() {
                 // Toggle para opacidad en tiempo real
@@ -808,6 +952,7 @@
                 document.getElementById('pan-tool').addEventListener('click', () => this.setTool('pan'));
                 document.getElementById('brush-tool').addEventListener('click', () => this.setTool('brush'));
                 document.getElementById('eraser-tool').addEventListener('click', () => this.setTool('eraser'));
+                document.getElementById('smudge-tool').addEventListener('click', () => this.setTool('smudge'));
                 document.getElementById('lasso-tool').addEventListener('click', () => this.setTool('lasso'));
                 document.getElementById('lasso-eraser-tool').addEventListener('click', () => this.setTool('lasso-eraser'));
                 document.getElementById('fill-tool').addEventListener('click', () => this.setTool('fill'));
@@ -830,7 +975,7 @@
                 });
                 document.getElementById('brush-size').addEventListener('input', (e) => {
                     const size = parseInt(e.target.value);
-                    if (this.currentTool === 'brush' || this.currentTool === 'eraser') {
+                    if (['brush', 'eraser', 'smudge'].includes(this.currentTool)) {
                         this.toolSizes[this.currentTool] = size;
                     }
                     this.brushSize = size;
@@ -842,7 +987,7 @@
                 });
                 document.getElementById('brush-opacity').addEventListener('input', (e) => {
                     const opacity = parseInt(e.target.value);
-                    if (['brush', 'eraser', 'lasso', 'lasso-eraser'].includes(this.currentTool)) {
+                    if (['brush', 'eraser', 'lasso', 'lasso-eraser', 'smudge'].includes(this.currentTool)) {
                         this.toolOpacities[this.currentTool] = opacity;
                     }
                     this.currentOpacity = opacity;
@@ -881,6 +1026,9 @@
                     } else if (e.key === '2') {
                         e.preventDefault();
                         this.setTool('eraser');
+                    } else if (e.key === '4') {
+                        e.preventDefault();
+                        this.setTool('smudge');
                     } else if (e.key === '3') {
                         e.preventDefault();
                         this.setTool('lasso');
@@ -908,7 +1056,7 @@
                         e.preventDefault();
                         const currentSize = this.brushSize - 1;
                         this.brushSize = Math.max(1, currentSize);
-                        if (this.currentTool === 'brush' || this.currentTool === 'eraser') {
+                        if (['brush', 'eraser', 'smudge'].includes(this.currentTool)) {
                             document.getElementById('brush-size').value = this.brushSize;
                         }
                         document.getElementById('size-display').textContent = this.brushSize;
@@ -916,7 +1064,7 @@
                         e.preventDefault();
                         const currentSize = this.brushSize + 1;
                         this.brushSize = Math.min(50, currentSize);
-                        if (this.currentTool === 'brush' || this.currentTool === 'eraser') {
+                        if (['brush', 'eraser', 'smudge'].includes(this.currentTool)) {
                             document.getElementById('brush-size').value = this.brushSize;
                         }
                         document.getElementById('size-display').textContent = this.brushSize;
@@ -951,7 +1099,7 @@
                     document.getElementById(`${tool}-tool`).classList.add('active');
                 }
                 // Configurar valores individuales para size y opacity
-                if (tool === 'brush' || tool === 'eraser') {
+                if (['brush', 'eraser', 'smudge'].includes(tool)) {
                     this.brushSize = this.toolSizes[tool] || 5;
                     document.getElementById('brush-size').value = this.brushSize;
                     document.getElementById('size-display').textContent = this.brushSize;
@@ -970,7 +1118,7 @@
                 }
                 // Mostrar/ocultar opacidad slider
                 const opacityContainer = document.getElementById('opacity-container');
-                if (['brush', 'eraser', 'lasso', 'lasso-eraser'].includes(tool)) {
+                if (['brush', 'eraser', 'lasso', 'lasso-eraser', 'smudge'].includes(tool)) {
                     opacityContainer.style.display = 'inline-flex';
                     opacityContainer.style.gap = '10px';
                     opacityContainer.style.alignItems = 'center';
@@ -1776,6 +1924,10 @@
                 this.updateLayerVisibility();
                 this.updateLayerUI();
             }
+            toggleLock(index) {
+                this.layers[index].locked = !this.layers[index].locked;
+                this.updateLayerUI();
+            }
             updateZIndices() {
                 this.layers.forEach((layer, index) => {
                     layer.canvas.style.zIndex = `${index + 1}`;
@@ -1823,8 +1975,8 @@
                         <input type="text" value="${layer.name}" onchange="illustrator.renameLayer(${actualIndex}, this.value)">
                         <button onclick="illustrator.moveLayer(${actualIndex}, 'up')">↑</button>
                         <button onclick="illustrator.moveLayer(${actualIndex}, 'down')">↓</button>
-                        <button onclick="illustrator.toggleVisibility(${actualIndex})">${visIcon}</button>
-                        <button onclick="illustrator.toggleLock(${actualIndex})">${lockIcon}</button>
+                        <button class="visibility-btn ${!layer.visible ? 'hidden' : ''}" onclick="illustrator.toggleVisibility(${actualIndex})">${visIcon}</button>
+                        <button class="lock-btn ${layer.locked ? 'locked' : ''}" onclick="illustrator.toggleLock(${actualIndex})">${lockIcon}</button>
                         <input type="range" min="0" max="100" value="${opacityValue}" oninput="illustrator.setOpacity(${actualIndex}, this.value)">
                         <button onclick="illustrator.mergeWithBelow(${actualIndex})">Combinar con inferior</button>
                         <button onclick="illustrator.deleteSpecificLayer(${actualIndex})">Borrar</button>
@@ -2024,12 +2176,12 @@
                 this.inputCanvas.addEventListener('touchstart', (e) => {
                     e.preventDefault();
                     if (this.currentTool === 'lasso' || this.currentTool === 'lasso-eraser') this.startLasso(e.touches[0]);
-                    else if (this.currentTool === 'brush' || this.currentTool === 'eraser') this.startDrawing(e.touches[0]);
+                    else if (['brush', 'eraser', 'smudge'].includes(this.currentTool)) this.startDrawing(e.touches[0]);
                 });
                 this.inputCanvas.addEventListener('touchmove', (e) => {
                     e.preventDefault();
                     if (this.isLassoDrawing) this.drawLasso(e.touches[0]);
-                    else if (this.isDrawing && (this.currentTool === 'brush' || this.currentTool === 'eraser')) this.draw(e.touches[0]);
+                    else if (this.isDrawing && ['brush', 'eraser', 'smudge'].includes(this.currentTool)) this.draw(e.touches[0]);
                 });
                 this.inputCanvas.addEventListener('touchend', (e) => {
                     e.preventDefault();
@@ -2084,14 +2236,14 @@
                         this.startLasso(e);
                     } else if (this.currentTool === 'fill') {
                         this.fillArea(e);
-                    } else if (this.currentTool === 'brush' || this.currentTool === 'eraser') {
+                    } else if (['brush', 'eraser', 'smudge'].includes(this.currentTool)) {
                         this.startDrawing(e);
                     }
                 }
             }
             handlePointerMove(e) {
                 // Solo actualizar preview si es herramienta de pincel
-                if (this.currentTool === 'brush' || this.currentTool === 'eraser') {
+                if (['brush', 'eraser', 'smudge'].includes(this.currentTool)) {
                     this.updateBrushPreview(e);
                 }
                 if (this.isPanning) {
@@ -2104,7 +2256,7 @@
                     this.updateCanvasTransform();
                 } else if (this.isZoomDragging) {
                     this.handleZoomDrag(e);
-                } else if (this.isDrawing && (this.currentTool === 'brush' || this.currentTool === 'eraser')) {
+                } else if (this.isDrawing && ['brush', 'eraser', 'smudge'].includes(this.currentTool)) {
                     this.draw(e);
                 } else if (this.isLassoDrawing && (this.currentTool === 'lasso' || this.currentTool === 'lasso-eraser')) {
                     this.drawLasso(e);
@@ -2153,27 +2305,39 @@ if (this.isPanning) {
                 };
             }
             startDrawing(e) {
-                if (this.currentTool !== 'brush' && this.currentTool !== 'eraser') return;
+                if (!['brush', 'eraser', 'smudge'].includes(this.currentTool)) return;
                 const pos = this.getMousePos(e);
                 this.points = [pos];
                 const layer = this.layers[this.activeLayerIndex];
-                if (!layer.visible || layer.locked && this.getPixelAlpha(layer.ctx, pos.x, pos.y) === 0) return; // Si locked y píxel transparente, no dibujar
+                if (!layer.visible || (layer.locked && this.getPixelAlpha(layer.ctx, pos.x, pos.y) === 0)) return;
                 this.saveState(layer);
                 this.isDrawing = true;
                 this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
-this.inputCanvas.setPointerCapture(e.pointerId);
+                this.inputCanvas.setPointerCapture(e.pointerId);
+                // Para smudge (difuminar), aplicar blur inicial
+                if (this.currentTool === 'smudge') {
+                    const radius = this.brushSize / 2;
+                    const kernelSize = Math.max(3, Math.floor(this.brushSize / 5));
+                    this.blurRegion(layer.ctx, pos.x, pos.y, radius, this.currentOpacity / 100, kernelSize);
+                }
             }
             getPixelAlpha(ctx, x, y) {
                 const imageData = ctx.getImageData(Math.floor(x), Math.floor(y), 1, 1);
                 return imageData.data[3];
             }
             draw(e) {
-                if (this.currentTool !== 'brush' && this.currentTool !== 'eraser') return;
+                if (!['brush', 'eraser', 'smudge'].includes(this.currentTool)) return;
                 if (!this.isDrawing) return;
                 const pos = this.getMousePos(e);
                 this.points.push(pos);
                 if (this.currentTool === 'eraser') {
                     this.handleEraserDraw();
+                    return;
+                }
+                if (this.currentTool === 'smudge') {
+                    const radius = this.brushSize / 2;
+                    const kernelSize = Math.max(3, Math.floor(this.brushSize / 5));
+                    this.blurRegion(this.layers[this.activeLayerIndex].ctx, pos.x, pos.y, radius, this.currentOpacity / 100, kernelSize);
                     return;
                 }
                 const smoothed = this.getSmoothedPoints();
@@ -2215,6 +2379,14 @@ this.inputCanvas.setPointerCapture(e.pointerId);
                     this.points = [];
                     return;
                 }
+                if (this.currentTool === 'smudge') {
+                    this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+                    if (this.isLayersPanelOpen) {
+                        this.updateLayerUI();
+                    }
+                    this.points = [];
+                    return;
+                }
                 if (this.points.length < 2) {
                     this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
                     this.points = [];
@@ -2237,6 +2409,61 @@ this.inputCanvas.setPointerCapture(e.pointerId);
                     this.updateLayerUI();
                 }
                 this.points = [];
+            }
+            boxBlur(imageData, kernelSize) {
+                const pixels = imageData.data;
+                const width = imageData.width;
+                const height = imageData.height;
+                const output = new Uint8ClampedArray(pixels.length);
+                const half = Math.floor(kernelSize / 2);
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        let r = 0, g = 0, b = 0, a = 0, count = 0;
+                        for (let ky = -half; ky <= half; ky++) {
+                            for (let kx = -half; kx <= half; kx++) {
+                                const px = x + kx;
+                                const py = y + ky;
+                                if (px >= 0 && px < width && py >= 0 && py < height) {
+                                    const i = (py * width + px) * 4;
+                                    r += pixels[i];
+                                    g += pixels[i + 1];
+                                    b += pixels[i + 2];
+                                    a += pixels[i + 3];
+                                    count++;
+                                }
+                            }
+                        }
+                        const i = (y * width + x) * 4;
+                        output[i] = Math.round(r / count);
+                        output[i + 1] = Math.round(g / count);
+                        output[i + 2] = Math.round(b / count);
+                        output[i + 3] = Math.round(a / count);
+                    }
+                }
+                return new ImageData(output, width, height);
+            }
+            blurRegion(ctx, centerX, centerY, radius, strength, kernelSize) {
+                const x = Math.floor(centerX - radius);
+                const y = Math.floor(centerY - radius);
+                const w = Math.floor(radius * 2);
+                const h = Math.floor(radius * 2);
+                if (w <= 0 || h <= 0) return;
+                let imageData;
+                try {
+                    imageData = ctx.getImageData(x, y, w, h);
+                } catch (e) {
+                    return; // Fuera de límites
+                }
+                const blurredData = this.boxBlur(imageData, kernelSize);
+                const originalPixels = imageData.data;
+                const blurredPixels = blurredData.data;
+                for (let i = 0; i < originalPixels.length; i += 4) {
+                    originalPixels[i] = originalPixels[i] * (1 - strength) + blurredPixels[i] * strength;
+                    originalPixels[i + 1] = originalPixels[i + 1] * (1 - strength) + blurredPixels[i + 1] * strength;
+                    originalPixels[i + 2] = originalPixels[i + 2] * (1 - strength) + blurredPixels[i + 2] * strength;
+                    originalPixels[i + 3] = originalPixels[i + 3] * (1 - strength) + blurredPixels[i + 3] * strength;
+                }
+                ctx.putImageData(imageData, x, y);
             }
             startLasso(e) {
                 if (this.currentTool !== 'lasso' && this.currentTool !== 'lasso-eraser') return;
@@ -2438,15 +2665,22 @@ this.inputCanvas.setPointerCapture(e.pointerId);
                 layer.ctx.globalCompositeOperation = 'source-over';
             }
             updateBrushPreview(e) {
-                if (this.currentTool !== 'brush' && this.currentTool !== 'eraser') return;
+                if (!['brush', 'eraser', 'smudge'].includes(this.currentTool)) return;
                 if (this.isDrawing || this.isLassoDrawing || this.isZoomDragging) return;
                 const pos = this.getMousePos(e);
                 this.brushPreviewCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
-                this.brushPreviewCtx.beginPath();
-                this.brushPreviewCtx.arc(pos.x, pos.y, this.brushSize / 2, 0, 2 * Math.PI);
-                this.brushPreviewCtx.strokeStyle = this.currentTool === 'eraser' ? '#ffffff' : this.color;
-                this.brushPreviewCtx.lineWidth = 1;
-                this.brushPreviewCtx.stroke();
+                if (this.currentTool === 'smudge') {
+                    this.brushPreviewCtx.fillStyle = 'rgba(128, 128, 128, 0.3)';
+                    this.brushPreviewCtx.beginPath();
+                    this.brushPreviewCtx.arc(pos.x, pos.y, this.brushSize / 2, 0, 2 * Math.PI);
+                    this.brushPreviewCtx.fill();
+                } else {
+                    this.brushPreviewCtx.beginPath();
+                    this.brushPreviewCtx.arc(pos.x, pos.y, this.brushSize / 2, 0, 2 * Math.PI);
+                    this.brushPreviewCtx.strokeStyle = this.currentTool === 'eraser' ? '#ffffff' : this.color;
+                    this.brushPreviewCtx.lineWidth = 1;
+                    this.brushPreviewCtx.stroke();
+                }
             }
             toggleLayersPanel() {
                 this.isLayersPanelOpen = !this.isLayersPanelOpen;
@@ -2461,7 +2695,7 @@ this.inputCanvas.setPointerCapture(e.pointerId);
                 document.getElementById('stab-display').textContent = this.stabilizer;
                 document.getElementById('tolerance-display').textContent = this.fillTolerance;
                 document.getElementById('alpha-tolerance-display').textContent = this.fillAlphaTolerance;
-                if (['brush', 'eraser', 'lasso', 'lasso-eraser'].includes(this.currentTool)) {
+                if (['brush', 'eraser', 'lasso', 'lasso-eraser', 'smudge'].includes(this.currentTool)) {
                     document.getElementById('opacity-display').textContent = this.currentOpacity;
                 }
             }

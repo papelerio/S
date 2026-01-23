@@ -2155,9 +2155,9 @@ if (visibleLayers.length > 0) {
     blendCanvas.height = this.containerHeight;
     const blendCtx = blendCanvas.getContext('2d');
     
-    // Dibujar capas con sus modos de fusión
+    // INCLUIR TODAS las capas visibles (INCLUYENDO FONDO)
     this.layers.forEach(layer => {
-        if (layer.visible && !layer.isBackground) {
+        if (layer.visible) {
             // Limpiar el canvas temporal
             blendCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
             
@@ -2206,9 +2206,9 @@ copyBase64WebP() {
     blendCanvas.height = this.containerHeight;
     const blendCtx = blendCanvas.getContext('2d');
     
-    // Dibujar capas con sus modos de fusión
+    // INCLUIR TODAS las capas visibles (INCLUYENDO FONDO)
     this.layers.forEach(layer => {
-        if (layer.visible && !layer.isBackground) {
+        if (layer.visible) {
             // Limpiar el canvas temporal
             blendCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
             
@@ -2266,9 +2266,9 @@ copyBase64WebP() {
     blendCanvas.height = this.containerHeight;
     const blendCtx = blendCanvas.getContext('2d');
     
-    // Dibujar capas con sus modos de fusión
+    // INCLUIR TODAS las capas visibles (INCLUYENDO FONDO)
     this.layers.forEach(layer => {
-        if (layer.visible && !layer.isBackground) {
+        if (layer.visible) {
             // Limpiar el canvas temporal
             blendCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
             

@@ -1277,72 +1277,80 @@ document.querySelectorAll('.brush-type').forEach(button => {
                     }
                 });
                 document.addEventListener('keydown', (e) => {
-                    if (e.ctrlKey && e.key === 'z') {
-                        e.preventDefault();
-                        this.undo();
-                    } else if (e.ctrlKey && e.key === 'y') {
-                        e.preventDefault();
-                        this.redo();
-                    } else if (e.key === '1') {
-                        e.preventDefault();
-                        this.setTool('brush');
-                    } else if (e.key === '2') {
-                        e.preventDefault();
-                        this.setTool('eraser');
-                    } else if (e.key === '4') {
-                        e.preventDefault();
-                        this.setTool('smudge');
-                    } else if (e.key === '3') {
-                        e.preventDefault();
-                        this.setTool('lasso');
-                    } else if (e.key.toLowerCase() === 'c') {
-                        e.preventDefault();
-                        if (this.currentTool === 'lasso-eraser') {
-                            this.setTool('lasso');
-                        } else {
-                            this.setTool('lasso-eraser');
-                        }
-                    } else if (e.key === '5') {
-                        e.preventDefault();
-                        this.setTool('fill');
-                    } else if (e.key === 'z' || e.key === 'Z') {
-                        e.preventDefault();
-                        this.setTool('zoom');
-                    } else if (e.key.toLowerCase() === 'x') {
-                        e.preventDefault();
-                        if (this.currentTool === 'pan') {
-                            this.setTool('brush');
-                        } else {
-                            this.setTool('pan');
-                        }
-                    } else if (e.key === 'q' || e.key === 'Q') {
-                        e.preventDefault();
-                        const currentSize = this.brushSize - 1;
-                        this.brushSize = Math.max(1, currentSize);
-                        if (['brush', 'eraser', 'smudge'].includes(this.currentTool)) {
-                            document.getElementById('brush-size').value = this.brushSize;
-                        }
-                        document.getElementById('size-display').textContent = this.brushSize;
-                    } else if (e.key === 'w' || e.key === 'W') {
-                        e.preventDefault();
-                        const currentSize = this.brushSize + 1;
-                        this.brushSize = Math.min(50, currentSize);
-                        if (['brush', 'eraser', 'smudge'].includes(this.currentTool)) {
-                            document.getElementById('brush-size').value = this.brushSize;
-                        }
-                        document.getElementById('size-display').textContent = this.brushSize;
-                    } else if (e.key === 'a' || e.key === 'A') {
-                        e.preventDefault();
-                        this.stabilizer = Math.max(0, this.stabilizer - 1);
-                        document.getElementById('stabilizer').value = this.stabilizer;
-                        document.getElementById('stab-display').textContent = this.stabilizer;
-                    } else if (e.key === 's' || e.key === 'S') {
-                        e.preventDefault();
-                        this.stabilizer = Math.min(10, this.stabilizer + 1);
-                        document.getElementById('stabilizer').value = this.stabilizer;
-                        document.getElementById('stab-display').textContent = this.stabilizer;
-                  }
-                });
+    // Si el usuario está escribiendo en un input o textarea, NO activar atajos
+    const isTyping = e.target.tagName === 'INPUT' || 
+                     e.target.tagName === 'TEXTAREA' || 
+                     e.target.isContentEditable;
+    
+    if (isTyping) return; // Deja que el usuario escriba normalmente
+    
+    // Ahora sí, procesar los atajos
+    if (e.ctrlKey && e.key === 'z') {
+        e.preventDefault();
+        this.undo();
+    } else if (e.ctrlKey && e.key === 'y') {
+        e.preventDefault();
+        this.redo();
+    } else if (e.key === '1') {
+        e.preventDefault();
+        this.setTool('brush');
+    } else if (e.key === '2') {
+        e.preventDefault();
+        this.setTool('eraser');
+    } else if (e.key === '4') {
+        e.preventDefault();
+        this.setTool('smudge');
+    } else if (e.key === '3') {
+        e.preventDefault();
+        this.setTool('lasso');
+    } else if (e.key.toLowerCase() === 'c') {
+        e.preventDefault();
+        if (this.currentTool === 'lasso-eraser') {
+            this.setTool('lasso');
+        } else {
+            this.setTool('lasso-eraser');
+        }
+    } else if (e.key === '5') {
+        e.preventDefault();
+        this.setTool('fill');
+    } else if (e.key === 'z' || e.key === 'Z') {
+        e.preventDefault();
+        this.setTool('zoom');
+    } else if (e.key.toLowerCase() === 'x') {
+        e.preventDefault();
+        if (this.currentTool === 'pan') {
+            this.setTool('brush');
+        } else {
+            this.setTool('pan');
+        }
+    } else if (e.key === 'q' || e.key === 'Q') {
+        e.preventDefault();
+        const currentSize = this.brushSize - 1;
+        this.brushSize = Math.max(1, currentSize);
+        if (['brush', 'eraser', 'smudge'].includes(this.currentTool)) {
+            document.getElementById('brush-size').value = this.brushSize;
+        }
+        document.getElementById('size-display').textContent = this.brushSize;
+    } else if (e.key === 'w' || e.key === 'W') {
+        e.preventDefault();
+        const currentSize = this.brushSize + 1;
+        this.brushSize = Math.min(50, currentSize);
+        if (['brush', 'eraser', 'smudge'].includes(this.currentTool)) {
+            document.getElementById('brush-size').value = this.brushSize;
+        }
+        document.getElementById('size-display').textContent = this.brushSize;
+    } else if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        this.stabilizer = Math.max(0, this.stabilizer - 1);
+        document.getElementById('stabilizer').value = this.stabilizer;
+        document.getElementById('stab-display').textContent = this.stabilizer;
+    } else if (e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        this.stabilizer = Math.min(10, this.stabilizer + 1);
+        document.getElementById('stabilizer').value = this.stabilizer;
+        document.getElementById('stab-display').textContent = this.stabilizer;
+    }
+});
             }
          setTool(tool) {
     // Si es brush y ya está seleccionado, mostrar menú

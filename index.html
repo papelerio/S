@@ -603,6 +603,14 @@
             width: 100%;
             box-sizing: border-box;
         }
+#copy-base64-btn {
+    background-color: #6f42c1;
+    color: white;
+    font-weight: bold;
+}
+#copy-base64-btn:hover {
+    background-color: #5a32a3;
+}
 /* Estilos para el menú de pinceles */
 #brush-menu {
     display: none;
@@ -789,6 +797,7 @@
             <button id="clear-layer">Limpiar Capa</button>
             <button id="download-btn">Descargar Imagen</button>
             <button id="copy-btn">Copiar Imagen</button>
+<button id="copy-base64-btn">Copiar Base64 (WebP)</button>
             <button id="layers-button">Capas</button>
             <!-- Panel de configuración de relleno -->
             <div id="fill-settings-panel" class="fill-settings-panel">
@@ -1227,6 +1236,9 @@ createPencilTexture(size) {
                         { boxShadow: '0 0 0 gold' }
                     ], { duration: 500 });
                 });
+document.getElementById('copy-base64-btn').addEventListener('click', () => {
+    this.copyBase64WebP();
+});
                 document.getElementById('color-picker').addEventListener('change', (e) => {
                     this.color = e.target.value;
                 });
@@ -2178,6 +2190,66 @@ if (visibleLayers.length > 0) {
             { boxShadow: '0 0 0 gold' }
         ], { duration: 500 });
     }, 'image/png');
+}
+copyBase64WebP() {
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = this.containerWidth;
+    tempCanvas.height = this.containerHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    // FONDO TRANSPARENTE
+    tempCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+    
+    // Crear un canvas temporal para aplicar blend modes
+    const blendCanvas = document.createElement('canvas');
+    blendCanvas.width = this.containerWidth;
+    blendCanvas.height = this.containerHeight;
+    const blendCtx = blendCanvas.getContext('2d');
+    
+    // Dibujar capas con sus modos de fusión
+    this.layers.forEach(layer => {
+        if (layer.visible && !layer.isBackground) {
+            // Limpiar el canvas temporal
+            blendCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+            
+            // Copiar el contenido actual del resultado
+            blendCtx.drawImage(tempCanvas, 0, 0);
+            
+            // Aplicar el blend mode
+            blendCtx.globalCompositeOperation = layer.blendMode;
+            blendCtx.globalAlpha = layer.opacity;
+            blendCtx.drawImage(layer.canvas, 0, 0);
+            
+            // Resetear y copiar de vuelta
+            blendCtx.globalCompositeOperation = 'source-over';
+            blendCtx.globalAlpha = 1;
+            
+            // Actualizar tempCanvas con el resultado mezclado
+            tempCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+            tempCtx.drawImage(blendCanvas, 0, 0);
+        }
+    });
+    
+    // Generar Base64 en formato WebP
+    const base64Data = tempCanvas.toDataURL('image/webp', 0.9);
+    
+    // Copiar al portapapeles
+    navigator.clipboard.writeText(base64Data).then(() => {
+        // Feedback visual
+        const btn = document.getElementById('copy-base64-btn');
+        btn.textContent = '¡Copiado!';
+        btn.animate([
+            { backgroundColor: '#6f42c1' },
+            { backgroundColor: '#28a745' },
+            { backgroundColor: '#6f42c1' }
+        ], { duration: 1000 });
+        
+        setTimeout(() => {
+            btn.textContent = 'Copiar Base64 (WebP)';
+        }, 1500);
+    }).catch(err => {
+        alert('Error al copiar: ' + err);
+    });
 }
             downloadImage() {
     const tempCanvas = document.createElement('canvas');

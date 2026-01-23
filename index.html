@@ -843,8 +843,6 @@ this.brushType = 'normal'; // Tipo de pincel por defecto
                 this.fillTolerance = 30;
                 this.fillAlphaTolerance = 50;
                 this.blendModes = ['normal', 'multiply', 'color', 'lighten', 'screen']; // Opciones disponibles
-                this.lastSmudgePos = null; // Para trackear dirección en smudge
-                this.smudgeMode = 'smudge'; // Modo por defecto: 'smudge' (nuevo) o 'blur' (viejo)
                 // Valores individuales por herramienta
                 this.toolSizes = { brush: 5, eraser: 5, smudge: 20 };
                 this.toolOpacities = { brush: 100, eraser: 100, lasso: 100, 'lasso-eraser': 100, smudge: 50 };
@@ -1097,125 +1095,6 @@ createPencilTexture(size) {
     this._pencilTexture = { canvas, size };
     return canvas;
 }
-boxBlur(imageData, kernelSize) {
-    const pixels = imageData.data;
-    const width = imageData.width;
-    const height = imageData.height;
-    const output = new Uint8ClampedArray(pixels.length);
-    const half = Math.floor(kernelSize / 2);
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            let r = 0, g = 0, b = 0, a = 0, count = 0;
-            for (let ky = -half; ky <= half; ky++) {
-                for (let kx = -half; kx <= half; kx++) {
-                    const px = x + kx;
-                    const py = y + ky;
-                    if (px >= 0 && px < width && py >= 0 && py < height) {
-                        const i = (py * width + px) * 4;
-                        r += pixels[i];
-                        g += pixels[i + 1];
-                        b += pixels[i + 2];
-                        a += pixels[i + 3];
-                        count++;
-                    }
-                }
-            }
-            const i = (y * width + x) * 4;
-            output[i] = Math.round(r / count);
-            output[i + 1] = Math.round(g / count);
-            output[i + 2] = Math.round(b / count);
-            output[i + 3] = Math.round(a / count);
-        }
-    }
-    return new ImageData(output, width, height);
-}
-blurRegion(ctx, centerX, centerY, radius, strength, kernelSize) {
-    const x = Math.floor(centerX - radius);
-    const y = Math.floor(centerY - radius);
-    const w = Math.floor(radius * 2);
-    const h = Math.floor(radius * 2);
-    if (w <= 0 || h <= 0) return;
-    let imageData;
-    try {
-        imageData = ctx.getImageData(x, y, w, h);
-    } catch (e) {
-        return; // Fuera de límites
-    }
-    const blurredData = this.boxBlur(imageData, kernelSize);
-    const originalPixels = imageData.data;
-    const blurredPixels = blurredData.data;
-    for (let i = 0; i < originalPixels.length; i += 4) {
-        originalPixels[i] = originalPixels[i] * (1 - strength) + blurredPixels[i] * strength;
-        originalPixels[i + 1] = originalPixels[i + 1] * (1 - strength) + blurredPixels[i + 1] * strength;
-        originalPixels[i + 2] = originalPixels[i + 2] * (1 - strength) + blurredPixels[i + 2] * strength;
-        originalPixels[i + 3] = originalPixels[i + 3] * (1 - strength) + blurredPixels[i + 3] * strength;
-    }
-    ctx.putImageData(imageData, x, y);
-}
-smudgeRegion(ctx, centerX, centerY, radius, strength, prevPos = null) {
-    if (strength <= 0) return;
-    const x = Math.floor(centerX - radius);
-    const y = Math.floor(centerY - radius);
-    const w = Math.floor(radius * 2 + 1);
-    const h = Math.floor(radius * 2 + 1);
-    if (w <= 0 || h <= 0) return;
-
-    let imageData;
-    try {
-        imageData = ctx.getImageData(x, y, w, h);
-    } catch (e) {
-        return; // Fuera de límites
-    }
-    const pixels = imageData.data;
-    const width = imageData.width;
-    const height = imageData.height;
-
-    // Si hay posición anterior, calcular dirección de "empuje"
-    let dirX = 0, dirY = 0;
-    if (prevPos) {
-        dirX = (centerX - prevPos.x) / radius; // Normalizar dirección
-        dirY = (centerY - prevPos.y) / radius;
-    }
-
-    // Para cada píxel en el área, "smudge" solo si alpha >0
-    for (let py = 0; py < h; py++) {
-        for (let px = 0; px < w; px++) {
-            const imgX = x + px;
-            const imgY = y + py;
-            if (imgX < 0 || imgX >= this.containerWidth || imgY < 0 || imgY >= this.containerHeight) continue;
-
-            const i = (py * width + px) * 4;
-            const alpha = pixels[i + 3];
-
-            if (alpha > 0) { // Solo smudgea píxeles opacos
-                // Samplear color "empujado" desde dirección opuesta
-                const sampleX = px - Math.floor(dirX * radius * 0.5);
-                const sampleY = py - Math.floor(dirY * radius * 0.5);
-
-                let sampleR = pixels[i], sampleG = pixels[i + 1], sampleB = pixels[i + 2], sampleA = alpha;
-
-                // Si el sample está dentro del área, usarlo; sino, fade to original
-                if (sampleX >= 0 && sampleX < w && sampleY >= 0 && sampleY < h) {
-                    const sampleI = (sampleY * width + sampleX) * 4;
-                    sampleR = pixels[sampleI];
-                    sampleG = pixels[sampleI + 1];
-                    sampleB = pixels[sampleI + 2];
-                    sampleA = pixels[sampleI + 3];
-                }
-
-                // Mezclar con fuerza (strength = opacidad del tool)
-                const mix = strength;
-                pixels[i] = pixels[i] * (1 - mix) + sampleR * mix;
-                pixels[i + 1] = pixels[i + 1] * (1 - mix) + sampleG * mix;
-                pixels[i + 2] = pixels[i + 2] * (1 - mix) + sampleB * mix;
-                // Mantener alpha original o sample (para bordes suaves)
-                pixels[i + 3] = Math.max(alpha, sampleA * mix);
-            }
-        }
-    }
-
-    ctx.putImageData(imageData, x, y);
-}
             initImportModal() {
                 const importBtn = document.getElementById('import-image-btn');
                 const importModal = document.getElementById('import-image-modal');
@@ -1331,10 +1210,6 @@ smudgeRegion(ctx, centerX, centerY, radius, strength, prevPos = null) {
                 document.getElementById('brush-tool').addEventListener('click', () => this.setTool('brush'));
                 document.getElementById('eraser-tool').addEventListener('click', () => this.setTool('eraser'));
                 document.getElementById('smudge-tool').addEventListener('click', () => this.setTool('smudge'));
-                document.getElementById('smudge-tool').addEventListener('dblclick', (e) => {
-                    e.preventDefault(); // Evita activar el tool al doble clic
-                    this.toggleSmudgeMode();
-                });
                 document.getElementById('lasso-tool').addEventListener('click', () => this.setTool('lasso'));
                 document.getElementById('lasso-eraser-tool').addEventListener('click', () => this.setTool('lasso-eraser'));
                 document.getElementById('fill-tool').addEventListener('click', () => this.setTool('fill'));
@@ -1392,11 +1267,6 @@ document.querySelectorAll('.brush-type').forEach(button => {
     });
 });
             }
-            toggleSmudgeMode() {
-    this.smudgeMode = this.smudgeMode === 'smudge' ? 'blur' : 'smudge';
-    const btn = document.getElementById('smudge-tool');
-    btn.textContent = this.smudgeMode === 'smudge' ? 'Difuminar Empuje (4)' : 'Difuminar Blur (4)';
-}
             initGlobalEvents() {
                 document.addEventListener('click', (e) => {
                     if (!e.target.closest('#favorites-panel') && this.isSelectingColorSlot) {
@@ -1534,10 +1404,6 @@ document.querySelectorAll('.brush-type').forEach(button => {
                     this.canvasContainer.style.cursor = 'grab';
                 } else {
                     this.canvasContainer.style.cursor = 'crosshair';
-                }
-                if (tool === 'smudge') {
-                    const btn = document.getElementById('smudge-tool');
-                    btn.textContent = this.smudgeMode === 'smudge' ? 'Difuminar Empuje (4)' : 'Difuminar Blur (4)';
                 }
             }
             initProgressSystem() {
@@ -1726,24 +1592,38 @@ document.querySelectorAll('.brush-type').forEach(button => {
                         }
                         // Dibujar layers visibles (solo las visibles para preview)
                         const visibleLayers = state.layers.filter(layerData => layerData.visible);
-                        if (visibleLayers.length > 0) {
-                            let loadedPreview = 0;
-                            visibleLayers.forEach(layerData => {
-                                const img = new Image();
-                                img.onload = () => {
-                                    previewCtx.save();
-                                    previewCtx.globalAlpha = layerData.opacity;
-                                    previewCtx.drawImage(img, 0, 0, 120, 90);
-                                    previewCtx.restore();
-                                    loadedPreview++;
-                                    // Opcional: si quieres un indicador de carga completa, pero no bloquea
-                                };
-                                img.onerror = () => {
-                                    loadedPreview++;
-                                };
-                                img.src = layerData.dataURL;
-                            });
-                        }
+if (visibleLayers.length > 0) {
+    // Crear canvas temporal para aplicar blend modes en el preview
+    const previewBlendCanvas = document.createElement('canvas');
+    previewBlendCanvas.width = 120;
+    previewBlendCanvas.height = 90;
+    const previewBlendCtx = previewBlendCanvas.getContext('2d');
+    
+    let loadedCount = 0;
+    visibleLayers.forEach(layerData => {
+        const img = new Image();
+        img.onload = () => {
+            // Aplicar blend mode en el preview
+            previewBlendCtx.clearRect(0, 0, 120, 90);
+            previewBlendCtx.drawImage(previewCanvas, 0, 0);
+            previewBlendCtx.globalCompositeOperation = layerData.blendMode || 'normal';
+            previewBlendCtx.globalAlpha = layerData.opacity;
+            previewBlendCtx.drawImage(img, 0, 0, 120, 90);
+            previewBlendCtx.globalCompositeOperation = 'source-over';
+            previewBlendCtx.globalAlpha = 1;
+            
+            // Copiar resultado
+            previewCtx.clearRect(0, 0, 120, 90);
+            previewCtx.drawImage(previewBlendCanvas, 0, 0);
+            
+            loadedCount++;
+        };
+        img.onerror = () => {
+            loadedCount++;
+        };
+        img.src = layerData.dataURL;
+    });
+}
                         loadBtn.disabled = false;
                         slotEl.classList.remove('empty');
                     } else {
@@ -2241,54 +2121,100 @@ document.querySelectorAll('.brush-type').forEach(button => {
     if (this.isLayersPanelOpen) this.updateLayerUI(); // Refrescar UI
 }
             async copyImage() {
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = this.containerWidth;
-                tempCanvas.height = this.containerHeight;
-                const tempCtx = tempCanvas.getContext('2d');
-                // FONDO TRANSPARENTE
-                tempCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
-                // Dibujar solo las capas visibles
-                this.layers.forEach(layer => {
-                    if (layer.visible) {
-                        tempCtx.save();
-                        tempCtx.globalAlpha = layer.opacity;
-                        tempCtx.drawImage(layer.canvas, 0, 0);
-                        tempCtx.restore();
-                    }
-                });
-                tempCanvas.toBlob(async (blob) => {
-                    const item = new ClipboardItem({ 'image/png': blob });
-                    await navigator.clipboard.write([item]);
-                    // Efecto visual de confirmación
-                    const copyBtn = document.getElementById('copy-btn');
-                    copyBtn.animate([
-                        { boxShadow: '0 0 0 gold' },
-                        { boxShadow: '0 0 20px gold' },
-                        { boxShadow: '0 0 0 gold' }
-                    ], { duration: 500 });
-                }, 'image/png');
-            }
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = this.containerWidth;
+    tempCanvas.height = this.containerHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    // FONDO TRANSPARENTE
+    tempCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+    
+    // Crear un canvas temporal para aplicar blend modes
+    const blendCanvas = document.createElement('canvas');
+    blendCanvas.width = this.containerWidth;
+    blendCanvas.height = this.containerHeight;
+    const blendCtx = blendCanvas.getContext('2d');
+    
+    // Dibujar capas con sus modos de fusión
+    this.layers.forEach(layer => {
+        if (layer.visible && !layer.isBackground) {
+            // Limpiar el canvas temporal
+            blendCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+            
+            // Copiar el contenido actual del resultado
+            blendCtx.drawImage(tempCanvas, 0, 0);
+            
+            // Aplicar el blend mode
+            blendCtx.globalCompositeOperation = layer.blendMode;
+            blendCtx.globalAlpha = layer.opacity;
+            blendCtx.drawImage(layer.canvas, 0, 0);
+            
+            // Resetear y copiar de vuelta
+            blendCtx.globalCompositeOperation = 'source-over';
+            blendCtx.globalAlpha = 1;
+            
+            // Actualizar tempCanvas con el resultado mezclado
+            tempCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+            tempCtx.drawImage(blendCanvas, 0, 0);
+        }
+    });
+    
+    tempCanvas.toBlob(async (blob) => {
+        const item = new ClipboardItem({ 'image/png': blob });
+        await navigator.clipboard.write([item]);
+        // Efecto visual de confirmación
+        const copyBtn = document.getElementById('copy-btn');
+        copyBtn.animate([
+            { boxShadow: '0 0 0 gold' },
+            { boxShadow: '0 0 20px gold' },
+            { boxShadow: '0 0 0 gold' }
+        ], { duration: 500 });
+    }, 'image/png');
+}
             downloadImage() {
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = this.containerWidth;
-                tempCanvas.height = this.containerHeight;
-                const tempCtx = tempCanvas.getContext('2d');
-                // FONDO TRANSPARENTE en lugar del ajedrez
-                tempCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
-                // Dibujar solo las capas visibles
-                this.layers.forEach(layer => {
-                    if (layer.visible) {
-                        tempCtx.save();
-                        tempCtx.globalAlpha = layer.opacity;
-                        tempCtx.drawImage(layer.canvas, 0, 0);
-                        tempCtx.restore();
-                    }
-                });
-                const link = document.createElement('a');
-                link.download = `mi-ilustracion-${this.containerWidth}x${this.containerHeight}.png`;
-                link.href = tempCanvas.toDataURL('image/png');
-                link.click();
-            }
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = this.containerWidth;
+    tempCanvas.height = this.containerHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    // FONDO TRANSPARENTE
+    tempCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+    
+    // Crear un canvas temporal para aplicar blend modes
+    const blendCanvas = document.createElement('canvas');
+    blendCanvas.width = this.containerWidth;
+    blendCanvas.height = this.containerHeight;
+    const blendCtx = blendCanvas.getContext('2d');
+    
+    // Dibujar capas con sus modos de fusión
+    this.layers.forEach(layer => {
+        if (layer.visible && !layer.isBackground) {
+            // Limpiar el canvas temporal
+            blendCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+            
+            // Copiar el contenido actual del resultado
+            blendCtx.drawImage(tempCanvas, 0, 0);
+            
+            // Aplicar el blend mode
+            blendCtx.globalCompositeOperation = layer.blendMode;
+            blendCtx.globalAlpha = layer.opacity;
+            blendCtx.drawImage(layer.canvas, 0, 0);
+            
+            // Resetear y copiar de vuelta
+            blendCtx.globalCompositeOperation = 'source-over';
+            blendCtx.globalAlpha = 1;
+            
+            // Actualizar tempCanvas con el resultado mezclado
+            tempCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
+            tempCtx.drawImage(blendCanvas, 0, 0);
+        }
+    });
+    
+    const link = document.createElement('a');
+    link.download = `mi-ilustracion-${this.containerWidth}x${this.containerHeight}.png`;
+    link.href = tempCanvas.toDataURL('image/png');
+    link.click();
+}
             drawCheckerboardOnCtx(ctx) {
                 const size = 20;
                 ctx.fillStyle = '#f0f0f0';
@@ -2745,16 +2671,11 @@ if (this.isPanning) {
                 this.isDrawing = true;
                 this.inputCtx.clearRect(0, 0, this.containerWidth, this.containerHeight);
                 this.inputCanvas.setPointerCapture(e.pointerId);
-                // Para smudge (difuminar), aplicar inicial según modo
+                // Para smudge (difuminar), aplicar blur inicial
                 if (this.currentTool === 'smudge') {
                     const radius = this.brushSize / 2;
                     const kernelSize = Math.max(3, Math.floor(this.brushSize / 5));
-                    if (this.smudgeMode === 'smudge') {
-                        this.smudgeRegion(layer.ctx, pos.x, pos.y, radius, this.currentOpacity / 100);
-                        this.lastSmudgePos = pos; // Trackear para empuje
-                    } else {
-                        this.blurRegion(layer.ctx, pos.x, pos.y, radius, this.currentOpacity / 100, kernelSize);
-                    }
+                    this.blurRegion(layer.ctx, pos.x, pos.y, radius, this.currentOpacity / 100, kernelSize);
                 }
             }
             getPixelAlpha(ctx, x, y) {
@@ -2775,12 +2696,7 @@ if (this.isPanning) {
     if (this.currentTool === 'smudge') {
         const radius = this.brushSize / 2;
         const kernelSize = Math.max(3, Math.floor(this.brushSize / 5));
-        if (this.smudgeMode === 'smudge') {
-            this.smudgeRegion(this.layers[this.activeLayerIndex].ctx, pos.x, pos.y, radius, this.currentOpacity / 100, this.lastSmudgePos);
-            this.lastSmudgePos = pos; // Actualizar para empuje
-        } else {
-            this.blurRegion(this.layers[this.activeLayerIndex].ctx, pos.x, pos.y, radius, this.currentOpacity / 100, kernelSize);
-        }
+        this.blurRegion(this.layers[this.activeLayerIndex].ctx, pos.x, pos.y, radius, this.currentOpacity / 100, kernelSize);
         return;
     }
    
@@ -2831,7 +2747,6 @@ if (this.isPanning) {
                         this.updateLayerUI();
                     }
                     this.points = [];
-                    this.lastSmudgePos = null; // Reset posición
                     return;
                 }
                 if (this.points.length < 2) {
@@ -2854,6 +2769,61 @@ layer.ctx.restore();
                     this.updateLayerUI();
                 }
                 this.points = [];
+            }
+            boxBlur(imageData, kernelSize) {
+                const pixels = imageData.data;
+                const width = imageData.width;
+                const height = imageData.height;
+                const output = new Uint8ClampedArray(pixels.length);
+                const half = Math.floor(kernelSize / 2);
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        let r = 0, g = 0, b = 0, a = 0, count = 0;
+                        for (let ky = -half; ky <= half; ky++) {
+                            for (let kx = -half; kx <= half; kx++) {
+                                const px = x + kx;
+                                const py = y + ky;
+                                if (px >= 0 && px < width && py >= 0 && py < height) {
+                                    const i = (py * width + px) * 4;
+                                    r += pixels[i];
+                                    g += pixels[i + 1];
+                                    b += pixels[i + 2];
+                                    a += pixels[i + 3];
+                                    count++;
+                                }
+                            }
+                        }
+                        const i = (y * width + x) * 4;
+                        output[i] = Math.round(r / count);
+                        output[i + 1] = Math.round(g / count);
+                        output[i + 2] = Math.round(b / count);
+                        output[i + 3] = Math.round(a / count);
+                    }
+                }
+                return new ImageData(output, width, height);
+            }
+            blurRegion(ctx, centerX, centerY, radius, strength, kernelSize) {
+                const x = Math.floor(centerX - radius);
+                const y = Math.floor(centerY - radius);
+                const w = Math.floor(radius * 2);
+                const h = Math.floor(radius * 2);
+                if (w <= 0 || h <= 0) return;
+                let imageData;
+                try {
+                    imageData = ctx.getImageData(x, y, w, h);
+                } catch (e) {
+                    return; // Fuera de límites
+                }
+                const blurredData = this.boxBlur(imageData, kernelSize);
+                const originalPixels = imageData.data;
+                const blurredPixels = blurredData.data;
+                for (let i = 0; i < originalPixels.length; i += 4) {
+                    originalPixels[i] = originalPixels[i] * (1 - strength) + blurredPixels[i] * strength;
+                    originalPixels[i + 1] = originalPixels[i + 1] * (1 - strength) + blurredPixels[i + 1] * strength;
+                    originalPixels[i + 2] = originalPixels[i + 2] * (1 - strength) + blurredPixels[i + 2] * strength;
+                    originalPixels[i + 3] = originalPixels[i + 3] * (1 - strength) + blurredPixels[i + 3] * strength;
+                }
+                ctx.putImageData(imageData, x, y);
             }
             startLasso(e) {
                 if (this.currentTool !== 'lasso' && this.currentTool !== 'lasso-eraser') return;
